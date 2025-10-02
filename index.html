@@ -349,6 +349,15 @@
             font-size: 1rem;
             margin-top: 10px;
         }
+
+        /* Стиль для кнопки переключения камеры */
+        .switch-camera-btn {
+            display: none; /* По умолчанию скрыта */
+        }
+
+        .mobile .switch-camera-btn {
+            display: flex; /* Показываем только на мобильных */
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -426,6 +435,10 @@
                         <i class="fas fa-desktop"></i>
                         <span>Экран</span>
                     </button>
+                    <button id="switchCameraBtn" class="icon-btn secondary switch-camera-btn">
+                        <i class="fas fa-camera-rotate"></i>
+                        <span>Камера</span>
+                    </button>
                 </div>
                 <div class="status" id="callStatus">Готов к звонку</div>
                 <div class="debug-info" id="debugInfo">
@@ -470,6 +483,7 @@
         const toggleVideoBtn = document.getElementById('toggleVideoBtn');
         const toggleAudioBtn = document.getElementById('toggleAudioBtn');
         const toggleScreenBtn = document.getElementById('toggleScreenBtn');
+        const switchCameraBtn = document.getElementById('switchCameraBtn');
         const callStatus = document.getElementById('callStatus');
         
         // Переменные приложения
@@ -483,12 +497,30 @@
         let isScreenSharing = false;
         let hasVideo = false;
         let hasAudio = false;
+        let isMobile = false;
+        let currentFacingMode = 'user'; // 'user' - фронтальная, 'environment' - задняя
+        let availableCameras = [];
         
         // Хранилище подключений и звонков
         const connections = new Map();
         const calls = new Map();
         const users = new Map();
         let myPeerId = null;
+
+        // Проверка на мобильное устройство
+        function checkMobileDevice() {
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+            const isAndroid = /android/i.test(userAgent);
+            isMobile = isIOS || isAndroid;
+            
+            if (isMobile) {
+                document.body.classList.add('mobile');
+                debugInfo.textContent += ' (Мобильное устройство)';
+            }
+            
+            return isMobile;
+        }
 
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -536,10 +568,35 @@
             }
         });
         
+        // Получение списка доступных камер
+        async function getAvailableCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                availableCameras = videoDevices;
+                
+                if (availableCameras.length > 1) {
+                    switchCameraBtn.disabled = false;
+                    debugInfo.textContent += ` (Доступно камер: ${availableCameras.length})`;
+                } else {
+                    switchCameraBtn.disabled = true;
+                    debugInfo.textContent += ' (Только одна камера)';
+                }
+                
+                return availableCameras;
+            } catch (error) {
+                console.error('Ошибка получения списка камер:', error);
+                return [];
+            }
+        }
+        
         // Инициализация медиаустройств
         async function initializeMedia() {
             try {
                 debugInfo.textContent = 'Запрос доступа к медиаустройствам...';
+                
+                // Проверяем мобильное устройство
+                checkMobileDevice();
                 
                 // Сначала пробуем получить только аудио
                 const audioConstraints = {
@@ -567,7 +624,8 @@
                     video: {
                         width: { ideal: 1280 },
                         height: { ideal: 720 },
-                        frameRate: { ideal: 30 }
+                        frameRate: { ideal: 30 },
+                        facingMode: isMobile ? 'user' : 'environment' // На мобильных начинаем с фронтальной
                     },
                     audio: false
                 };
@@ -585,6 +643,10 @@
                         localStream = videoStream;
                     }
                     debugInfo.textContent += ', Камера подключена';
+                    
+                    // Получаем список доступных камер
+                    await getAvailableCameras();
+                    
                 } catch (videoError) {
                     console.error('Ошибка доступа к камере:', videoError);
                     hasVideo = false;
@@ -652,6 +714,104 @@
                 debugInfo.textContent = 'Ошибка доступа к медиаустройствам: ' + error.message;
                 addMessage('Система: Ошибка доступа к медиаустройствам', 'system');
             }
+        }
+        
+        // Переключение камеры
+        switchCameraBtn.addEventListener('click', switchCamera);
+        
+        async function switchCamera() {
+            if (!hasVideo || !localStream) {
+                debugInfo.textContent = 'Камера не доступна для переключения';
+                return;
+            }
+            
+            try {
+                debugInfo.textContent = 'Переключение камеры...';
+                
+                // Останавливаем текущие видео треки
+                localStream.getVideoTracks().forEach(track => {
+                    track.stop();
+                });
+                
+                // Переключаем режим камеры
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+                
+                const videoConstraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 },
+                        facingMode: currentFacingMode
+                    },
+                    audio: false
+                };
+                
+                // Получаем новый видео поток
+                const newVideoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+                
+                // Заменяем видео треки в основном потоке
+                const newVideoTrack = newVideoStream.getVideoTracks()[0];
+                const oldVideoTrack = localStream.getVideoTracks()[0];
+                
+                if (oldVideoTrack) {
+                    localStream.removeTrack(oldVideoTrack);
+                }
+                localStream.addTrack(newVideoTrack);
+                
+                // Обновляем видео элемент
+                localVideo.srcObject = localStream;
+                
+                // Обновляем все активные звонки с новым потоком
+                updateAllCallsWithNewStream();
+                
+                // Обновляем иконку кнопки
+                updateSwitchCameraButton();
+                
+                debugInfo.textContent = `Камера переключена на ${currentFacingMode === 'user' ? 'фронтальную' : 'заднюю'}`;
+                addMessage(`Система: Камера переключена на ${currentFacingMode === 'user' ? 'фронтальную' : 'заднюю'}`, 'system');
+                
+            } catch (error) {
+                console.error('Ошибка переключения камеры:', error);
+                debugInfo.textContent = 'Ошибка переключения камеры: ' + error.message;
+                
+                // Пробуем вернуться к предыдущей камере
+                currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            }
+        }
+        
+        // Обновление иконки кнопки переключения камеры
+        function updateSwitchCameraButton() {
+            const cameraIcon = switchCameraBtn.querySelector('i');
+            if (currentFacingMode === 'user') {
+                cameraIcon.className = 'fas fa-camera';
+                switchCameraBtn.querySelector('span').textContent = 'Задняя';
+            } else {
+                cameraIcon.className = 'fas fa-mobile';
+                switchCameraBtn.querySelector('span').textContent = 'Фронтальная';
+            }
+        }
+        
+        // Обновление всех активных звонков с новым потоком
+        function updateAllCallsWithNewStream() {
+            if (!localStream) return;
+            
+            calls.forEach((call, peerId) => {
+                const senders = call.peerConnection.getSenders();
+                senders.forEach(sender => {
+                    if (sender.track && sender.track.kind === 'video') {
+                        const videoTrack = localStream.getVideoTracks()[0];
+                        if (videoTrack) {
+                            sender.replaceTrack(videoTrack);
+                        }
+                    }
+                    if (sender.track && sender.track.kind === 'audio') {
+                        const audioTrack = localStream.getAudioTracks()[0];
+                        if (audioTrack) {
+                            sender.replaceTrack(audioTrack);
+                        }
+                    }
+                });
+            });
         }
         
         // Инициализация Peer соединения
@@ -1246,6 +1406,14 @@
             // Кнопка демонстрации экрана
             screenIcon.className = isScreenSharing ? 'fas fa-stop' : 'fas fa-desktop';
             toggleScreenBtn.classList.toggle('secondary', isScreenSharing);
+            
+            // Кнопка переключения камеры (только если есть видео и это мобильное устройство)
+            if (hasVideo && isMobile && availableCameras.length > 1) {
+                updateSwitchCameraButton();
+                switchCameraBtn.disabled = false;
+            } else {
+                switchCameraBtn.disabled = true;
+            }
         }
         
         // Инициализация кнопок управления медиа
