@@ -24,7 +24,7 @@
         
         .container {
             width: 100%;
-            max-width: 800px;
+            max-width: 900px;
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border-radius: 20px;
@@ -102,6 +102,12 @@
             background: rgba(255, 255, 255, 0.3);
         }
         
+        button:disabled {
+            background: rgba(255, 255, 255, 0.1);
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         input {
             width: 100%;
             padding: 12px 20px;
@@ -172,6 +178,13 @@
             border-bottom-left-radius: 5px;
         }
         
+        .message.system {
+            align-self: center;
+            background: rgba(0, 0, 0, 0.3);
+            font-style: italic;
+            max-width: 90%;
+        }
+        
         .chat-input {
             display: flex;
             padding: 15px;
@@ -211,6 +224,7 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
+            position: relative;
         }
         
         video {
@@ -219,11 +233,28 @@
             object-fit: cover;
         }
         
+        .video-label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.8rem;
+        }
+        
         .call-controls {
             display: flex;
             justify-content: center;
             gap: 15px;
             margin-top: 20px;
+        }
+        
+        .media-controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
         }
         
         .status {
@@ -236,7 +267,20 @@
         .hidden {
             display: none;
         }
+        
+        .icon-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+        }
+        
+        .icon-btn i {
+            font-size: 1.2rem;
+        }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="container">
@@ -283,14 +327,26 @@
                 <div class="video-container">
                     <div class="video-box">
                         <video id="localVideo" autoplay muted></video>
+                        <div class="video-label">Вы</div>
                     </div>
                     <div class="video-box">
                         <video id="remoteVideo" autoplay></video>
+                        <div class="video-label">Собеседник</div>
                     </div>
                 </div>
                 <div class="call-controls">
                     <button id="startCallBtn">Начать звонок</button>
-                    <button id="endCallBtn" class="secondary">Завершить</button>
+                    <button id="endCallBtn" class="secondary" disabled>Завершить</button>
+                </div>
+                <div class="media-controls">
+                    <button id="toggleVideoBtn" class="icon-btn secondary">
+                        <i class="fas fa-video"></i>
+                        <span>Камера</span>
+                    </button>
+                    <button id="toggleAudioBtn" class="icon-btn secondary">
+                        <i class="fas fa-microphone"></i>
+                        <span>Микрофон</span>
+                    </button>
                 </div>
                 <div class="status" id="callStatus">Готов к звонку</div>
             </div>
@@ -325,15 +381,20 @@
         const remoteVideo = document.getElementById('remoteVideo');
         const startCallBtn = document.getElementById('startCallBtn');
         const endCallBtn = document.getElementById('endCallBtn');
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const toggleAudioBtn = document.getElementById('toggleAudioBtn');
         const callStatus = document.getElementById('callStatus');
         
         // Переменные приложения
         let peer = null;
         let conn = null;
+        let currentCall = null;
         let currentRoomCode = null;
         let isHost = false;
         let localStream = null;
         let remoteStream = null;
+        let isVideoEnabled = true;
+        let isAudioEnabled = true;
         
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -382,7 +443,7 @@
         // Инициализация Peer соединения
         function initializePeer(id = null) {
             // Создаем Peer с ID или без (генерируется автоматически)
-            peer = id ? new Peer(id) : new Peer();
+            peer = id ? new Peer(id, {debug: 2}) : new Peer({debug: 2});
             
             peer.on('open', (id) => {
                 console.log('Peer подключен с ID:', id);
@@ -401,36 +462,26 @@
             
             peer.on('error', (err) => {
                 console.error('Peer error:', err);
-                connectionStatus.textContent = 'Ошибка подключения';
+                connectionStatus.textContent = 'Ошибка подключения: ' + err.type;
             });
             
             // Обработка входящих видеозвонков
             peer.on('call', (call) => {
+                console.log('Входящий звонок от:', call.peer);
+                
                 // Получаем наш локальный видеопоток
-                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                    .then(stream => {
-                        localStream = stream;
-                        localVideo.srcObject = stream;
-                        
-                        // Отвечаем на звонок с нашим видеопотоком
-                        call.answer(stream);
-                        
-                        // Получаем удаленный видеопоток
-                        call.on('stream', (remoteStream) => {
-                            remoteVideo.srcObject = remoteStream;
-                            callStatus.textContent = 'Звонок активен';
-                            startCallBtn.disabled = true;
-                            endCallBtn.disabled = false;
-                        });
-                        
-                        call.on('close', () => {
-                            endCall();
-                        });
-                    })
-                    .catch(err => {
-                        console.error('Ошибка доступа к медиаустройствам:', err);
-                        callStatus.textContent = 'Ошибка доступа к камере/микрофону';
-                    });
+                getUserMedia().then(stream => {
+                    // Отвечаем на звонок с нашим видеопотоком
+                    call.answer(stream);
+                    setupCall(call);
+                    
+                    // Уведомляем о входящем звонке
+                    callStatus.textContent = 'Входящий звонок...';
+                    addMessage('Система: Входящий звонок', 'system');
+                }).catch(err => {
+                    console.error('Ошибка доступа к медиаустройствам:', err);
+                    callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                });
             });
         }
         
@@ -457,6 +508,9 @@
                     addMessage(data.message, 'other');
                 } else if (data.type === 'user_joined') {
                     addMessage('Система: Пользователь присоединился к чату', 'system');
+                } else if (data.type === 'call_ended') {
+                    endCall();
+                    addMessage('Система: Собеседник завершил звонок', 'system');
                 }
             });
             
@@ -464,6 +518,23 @@
                 console.log('Соединение закрыто');
                 connectionStatus.textContent = 'Соединение разорвано';
                 addMessage('Система: Соединение разорвано', 'system');
+            });
+            
+            conn.on('error', (err) => {
+                console.error('Connection error:', err);
+                connectionStatus.textContent = 'Ошибка соединения';
+            });
+        }
+        
+        // Получение доступа к медиаустройствам
+        function getUserMedia() {
+            return navigator.mediaDevices.getUserMedia({ 
+                video: true, 
+                audio: true 
+            }).then(stream => {
+                localStream = stream;
+                localVideo.srcObject = stream;
+                return stream;
             });
         }
         
@@ -502,48 +573,119 @@
             callStatus.textContent = 'Установка соединения...';
             
             // Получаем доступ к камере и микрофону
-            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-                .then(stream => {
-                    localStream = stream;
-                    localVideo.srcObject = stream;
-                    
-                    // Звоним другому участнику
-                    const call = peer.call(currentRoomCode, stream);
-                    
-                    // Получаем удаленный видеопоток
-                    call.on('stream', (remoteStream) => {
-                        remoteVideo.srcObject = remoteStream;
-                        callStatus.textContent = 'Звонок активен';
-                        startCallBtn.disabled = true;
-                        endCallBtn.disabled = false;
-                    });
-                    
-                    call.on('close', () => {
-                        endCall();
-                    });
-                })
-                .catch(err => {
-                    console.error('Ошибка доступа к медиаустройствам:', err);
-                    callStatus.textContent = 'Ошибка доступа к камере/микрофону';
-                });
+            getUserMedia().then(stream => {
+                // Звоним другому участнику
+                currentCall = peer.call(currentRoomCode, stream);
+                setupCall(currentCall);
+            }).catch(err => {
+                console.error('Ошибка доступа к медиаустройствам:', err);
+                callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+            });
+        }
+        
+        // Настройка обработчиков для звонка
+        function setupCall(call) {
+            call.on('stream', (remoteStream) => {
+                console.log('Получен удаленный поток');
+                remoteVideo.srcObject = remoteStream;
+                callStatus.textContent = 'Звонок активен';
+                startCallBtn.disabled = true;
+                endCallBtn.disabled = false;
+                addMessage('Система: Звонок начат', 'system');
+            });
+            
+            call.on('close', () => {
+                console.log('Звонок завершен');
+                endCall();
+                addMessage('Система: Звонок завершен', 'system');
+            });
+            
+            call.on('error', (err) => {
+                console.error('Call error:', err);
+                callStatus.textContent = 'Ошибка звонка: ' + err.message;
+                endCall();
+            });
+            
+            currentCall = call;
         }
         
         // Завершить видеозвонок
         endCallBtn.addEventListener('click', endCall);
         
         function endCall() {
-            if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
-                localStream = null;
+            if (currentCall) {
+                currentCall.close();
+                currentCall = null;
             }
             
-            localVideo.srcObject = null;
+            if (localStream) {
+                // Не останавливаем поток полностью, только отсоединяем от видео
+                localVideo.srcObject = null;
+            }
+            
             remoteVideo.srcObject = null;
             
             callStatus.textContent = 'Звонок завершен';
             startCallBtn.disabled = false;
             endCallBtn.disabled = true;
+            
+            // Уведомляем другого участника о завершении звонка
+            if (conn) {
+                conn.send({ type: 'call_ended', message: 'Звонок завершен' });
+            }
+            
+            // Обновляем иконки кнопок управления медиа
+            updateMediaButtons();
         }
+        
+        // Переключение видео
+        toggleVideoBtn.addEventListener('click', () => {
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    isVideoEnabled = !videoTrack.enabled;
+                    videoTrack.enabled = isVideoEnabled;
+                    updateMediaButtons();
+                }
+            }
+        });
+        
+        // Переключение аудио
+        toggleAudioBtn.addEventListener('click', () => {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    isAudioEnabled = !audioTrack.enabled;
+                    audioTrack.enabled = isAudioEnabled;
+                    updateMediaButtons();
+                }
+            }
+        });
+        
+        // Обновление состояния кнопок управления медиа
+        function updateMediaButtons() {
+            const videoIcon = toggleVideoBtn.querySelector('i');
+            const audioIcon = toggleAudioBtn.querySelector('i');
+            
+            if (isVideoEnabled) {
+                videoIcon.className = 'fas fa-video';
+                toggleVideoBtn.classList.remove('secondary');
+            } else {
+                videoIcon.className = 'fas fa-video-slash';
+                toggleVideoBtn.classList.add('secondary');
+            }
+            
+            if (isAudioEnabled) {
+                audioIcon.className = 'fas fa-microphone';
+                toggleAudioBtn.classList.remove('secondary');
+            } else {
+                audioIcon.className = 'fas fa-microphone-slash';
+                toggleAudioBtn.classList.add('secondary');
+            }
+        }
+        
+        // Инициализация кнопок управления медиа
+        updateMediaButtons();
     </script>
 </body>
 </html>
