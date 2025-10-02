@@ -2,7 +2,7 @@
 
 🥚 Начни общение прямо сейчас - https://ezoxer.github.io/Shuck-s-Messenger/
 
-🤖 СМ в тг боте - @SucksMessengerBot
+🤖 начни пользоваться СМ в тг боте - https://t.me/SucksMessengerBot
 
 ⚡️ тгк СМ - https://t.me/SucksMessengerChannel
 
