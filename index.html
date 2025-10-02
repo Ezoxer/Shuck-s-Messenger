@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Suck's Messenger</title>
     <style>
+        /* Стили остаются без изменений */
         * {
             margin: 0;
             padding: 0;
@@ -407,6 +408,7 @@
         let isAudioEnabled = true;
         let isConnected = false;
         let peerId = null;
+        let isCallActive = false; // Флаг для отслеживания состояния звонка
         
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -719,39 +721,52 @@
                 callStatus.classList.add('success');
                 startCallBtn.disabled = true;
                 endCallBtn.disabled = false;
+                isCallActive = true;
                 addMessage('Система: Звонок начат', 'system');
             });
             
             call.on('close', () => {
                 console.log('Звонок завершен');
-                endCall();
-                addMessage('Система: Звонок завершен', 'system');
+                // Проверяем, не был ли звонок уже завершен
+                if (isCallActive) {
+                    endCall();
+                    addMessage('Система: Звонок завершен', 'system');
+                }
             });
             
             call.on('error', (err) => {
                 console.error('Call error:', err);
                 callStatus.textContent = 'Ошибка звонка: ' + err.message;
                 callStatus.classList.add('error');
-                endCall();
+                if (isCallActive) {
+                    endCall();
+                }
             });
             
             currentCall = call;
         }
         
         // Завершить видеозвонок
-        endCallBtn.addEventListener('click', endCall);
+        endCallBtn.addEventListener('click', () => {
+            // Добавляем защиту от множественных нажатий
+            if (isCallActive) {
+                endCall();
+            }
+        });
         
         function endCall() {
+            // Проверяем, не был ли звонок уже завершен
+            if (!isCallActive) return;
+            
+            console.log('Завершение звонка...');
+            isCallActive = false;
+            
             if (currentCall) {
                 currentCall.close();
                 currentCall = null;
             }
             
-            if (localStream) {
-                // Не останавливаем поток полностью, только отсоединяем от видео
-                localVideo.srcObject = localStream;
-            }
-            
+            // Останавливаем только удаленный поток, локальный оставляем для возможного следующего звонка
             remoteVideo.srcObject = null;
             
             callStatus.textContent = 'Звонок завершен';
