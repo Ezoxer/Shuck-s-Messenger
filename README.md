@@ -1,6 +1,6 @@
-Начни общение прямо сейчас - https://ezoxer.github.io/Shuck-s-Messenger/
+🥚 Начни общение прямо сейчас - https://ezoxer.github.io/Shuck-s-Messenger/
 
-Подержать - https://www.donationalerts.com/r/exxxorex1c
+💰 Подержать - https://www.donationalerts.com/r/exxxorex1c
 
 Локальный мессенджер P2P Connect
 
