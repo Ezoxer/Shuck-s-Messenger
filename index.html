@@ -395,6 +395,7 @@
         let remoteStream = null;
         let isVideoEnabled = true;
         let isAudioEnabled = true;
+        let isConnected = false;
         
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -452,6 +453,11 @@
                     conn = peer.connect(currentRoomCode);
                     setupConnection();
                 }
+                isConnected = true;
+                connectionStatus.textContent = 'Подключено';
+                
+                // Инициализируем медиаустройства
+                initializeMedia();
             });
             
             peer.on('connection', (connection) => {
@@ -469,19 +475,27 @@
             peer.on('call', (call) => {
                 console.log('Входящий звонок от:', call.peer);
                 
-                // Получаем наш локальный видеопоток
-                getUserMedia().then(stream => {
-                    // Отвечаем на звонок с нашим видеопотоком
-                    call.answer(stream);
+                // Отвечаем на звонок с нашим видеопотоком
+                if (localStream) {
+                    call.answer(localStream);
                     setupCall(call);
                     
                     // Уведомляем о входящем звонке
                     callStatus.textContent = 'Входящий звонок...';
                     addMessage('Система: Входящий звонок', 'system');
-                }).catch(err => {
-                    console.error('Ошибка доступа к медиаустройствам:', err);
-                    callStatus.textContent = 'Ошибка доступа к камере/микрофону';
-                });
+                } else {
+                    console.error('Локальный поток не доступен для ответа на звонок');
+                }
+            });
+        }
+        
+        // Инициализация медиаустройств
+        function initializeMedia() {
+            getUserMedia().then(stream => {
+                console.log('Медиаустройства инициализированы');
+            }).catch(err => {
+                console.error('Ошибка доступа к медиаустройствам:', err);
+                callStatus.textContent = 'Ошибка доступа к камере/микрофону';
             });
         }
         
@@ -511,6 +525,9 @@
                 } else if (data.type === 'call_ended') {
                     endCall();
                     addMessage('Система: Собеседник завершил звонок', 'system');
+                } else if (data.type === 'call_request') {
+                    // Уведомление о запросе звонка
+                    addMessage('Система: Собеседник звонит вам', 'system');
                 }
             });
             
@@ -570,7 +587,15 @@
         startCallBtn.addEventListener('click', startCall);
         
         function startCall() {
+            if (!isConnected || !conn) {
+                callStatus.textContent = 'Ошибка: Нет подключения к собеседнику';
+                return;
+            }
+            
             callStatus.textContent = 'Установка соединения...';
+            
+            // Уведомляем собеседника о звонке
+            conn.send({ type: 'call_request', message: 'Входящий звонок' });
             
             // Получаем доступ к камере и микрофону
             getUserMedia().then(stream => {
@@ -620,7 +645,7 @@
             
             if (localStream) {
                 // Не останавливаем поток полностью, только отсоединяем от видео
-                localVideo.srcObject = null;
+                localVideo.srcObject = localStream;
             }
             
             remoteVideo.srcObject = null;
