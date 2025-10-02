@@ -598,19 +598,23 @@
                 // Проверяем мобильное устройство
                 checkMobileDevice();
                 
-                // Сначала пробуем получить только аудио
-                const audioConstraints = {
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
-                    video: false
-                };
+                // Создаем пустой поток для начала
+                localStream = new MediaStream();
                 
                 // Пробуем получить аудио
                 try {
-                    localStream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+                    const audioStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        },
+                        video: false
+                    });
+                    
+                    audioStream.getAudioTracks().forEach(track => {
+                        localStream.addTrack(track);
+                    });
                     hasAudio = true;
                     debugInfo.textContent = 'Микрофон подключен';
                 } catch (audioError) {
@@ -620,28 +624,23 @@
                 }
                 
                 // Затем пробуем получить видео отдельно
-                const videoConstraints = {
-                    video: {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        frameRate: { ideal: 30 },
-                        facingMode: isMobile ? 'user' : 'environment' // На мобильных начинаем с фронтальной
-                    },
-                    audio: false
-                };
-                
                 try {
-                    const videoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
-                    hasVideo = true;
+                    const videoConstraints = {
+                        video: {
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            frameRate: { ideal: 30 },
+                            facingMode: isMobile ? 'user' : 'environment'
+                        },
+                        audio: false
+                    };
                     
-                    if (localStream) {
-                        // Если уже есть аудио поток, добавляем к нему видео
-                        videoStream.getVideoTracks().forEach(track => {
-                            localStream.addTrack(track);
-                        });
-                    } else {
-                        localStream = videoStream;
-                    }
+                    const videoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
+                    
+                    videoStream.getVideoTracks().forEach(track => {
+                        localStream.addTrack(track);
+                    });
+                    hasVideo = true;
                     debugInfo.textContent += ', Камера подключена';
                     
                     // Получаем список доступных камер
@@ -651,68 +650,57 @@
                     console.error('Ошибка доступа к камере:', videoError);
                     hasVideo = false;
                     debugInfo.textContent += ', Камера не доступна';
-                    
-                    // Если нет ни видео, ни аудио, создаем пустой поток для аудио
-                    if (!localStream && hasAudio) {
-                        try {
-                            localStream = await navigator.mediaDevices.getUserMedia({ 
-                                audio: {
-                                    echoCancellation: true,
-                                    noiseSuppression: true,
-                                    autoGainControl: true
-                                },
-                                video: false
-                            });
-                        } catch (finalError) {
-                            console.error('Не удалось получить доступ ни к одному устройству:', finalError);
-                            localStream = null;
-                        }
-                    }
                 }
                 
                 // Обновляем интерфейс в зависимости от доступных устройств
-                if (localStream) {
-                    if (hasVideo) {
-                        localVideo.srcObject = localStream;
-                        localVideo.style.display = 'block';
-                        noVideoPlaceholder.style.display = 'none';
-                    } else {
-                        localVideo.style.display = 'none';
-                        noVideoPlaceholder.style.display = 'flex';
-                    }
-                    
-                    updateMediaButtons();
-                    callStatus.textContent = 'Готов к звонку';
-                    callStatus.classList.remove('error');
-                    startCallBtn.disabled = false;
-                    
-                    // Обновляем текст в зависимости от доступных устройств
-                    if (hasVideo && hasAudio) {
-                        addMessage('Система: Камера и микрофон подключены', 'system');
-                    } else if (hasVideo) {
-                        addMessage('Система: Камера подключена (микрофон не доступен)', 'system');
-                        startCallBtn.textContent = 'Начать видеозвонок';
-                    } else if (hasAudio) {
-                        addMessage('Система: Микрофон подключен (камера не доступна)', 'system');
-                        startCallBtn.textContent = 'Начать аудиозвонок';
-                        toggleVideoBtn.disabled = true;
-                    } else {
-                        addMessage('Система: Медиаустройства не доступны', 'system');
-                        callStatus.textContent = 'Медиаустройства не доступны';
-                        callStatus.classList.add('error');
-                        startCallBtn.disabled = true;
-                    }
-                } else {
-                    addMessage('Система: Не удалось получить доступ к медиаустройствам', 'system');
-                    callStatus.textContent = 'Медиаустройства не доступны';
-                    callStatus.classList.add('error');
-                    startCallBtn.disabled = true;
-                }
+                updateMediaInterface();
                 
             } catch (error) {
                 console.error('Общая ошибка инициализации медиа:', error);
                 debugInfo.textContent = 'Ошибка доступа к медиаустройствам: ' + error.message;
                 addMessage('Система: Ошибка доступа к медиаустройствам', 'system');
+            }
+        }
+        
+        // Обновление интерфейса медиа
+        function updateMediaInterface() {
+            if (localStream) {
+                // Всегда устанавливаем поток для видео элемента
+                localVideo.srcObject = localStream;
+                
+                if (hasVideo) {
+                    localVideo.style.display = 'block';
+                    noVideoPlaceholder.style.display = 'none';
+                } else {
+                    localVideo.style.display = 'none';
+                    noVideoPlaceholder.style.display = 'flex';
+                }
+                
+                updateMediaButtons();
+                callStatus.textContent = 'Готов к звонку';
+                callStatus.classList.remove('error');
+                startCallBtn.disabled = false;
+                
+                // Обновляем текст в зависимости от доступных устройств
+                if (hasVideo && hasAudio) {
+                    addMessage('Система: Камера и микрофон подключены', 'system');
+                } else if (hasVideo) {
+                    addMessage('Система: Камера подключена (микрофон не доступен)', 'system');
+                    startCallBtn.textContent = 'Начать видеозвонок';
+                } else if (hasAudio) {
+                    addMessage('Система: Микрофон подключен (камера не доступна)', 'system');
+                    startCallBtn.textContent = 'Начать аудиозвонок';
+                } else {
+                    addMessage('Система: Медиаустройства не доступны', 'system');
+                    callStatus.textContent = 'Медиаустройства не доступны';
+                    callStatus.classList.add('error');
+                    startCallBtn.disabled = true;
+                }
+            } else {
+                addMessage('Система: Не удалось получить доступ к медиаустройствам', 'system');
+                callStatus.textContent = 'Медиаустройства не доступны';
+                callStatus.classList.add('error');
+                startCallBtn.disabled = true;
             }
         }
         
@@ -731,6 +719,7 @@
                 // Останавливаем текущие видео треки
                 localStream.getVideoTracks().forEach(track => {
                     track.stop();
+                    localStream.removeTrack(track);
                 });
                 
                 // Переключаем режим камеры
@@ -749,14 +738,10 @@
                 // Получаем новый видео поток
                 const newVideoStream = await navigator.mediaDevices.getUserMedia(videoConstraints);
                 
-                // Заменяем видео треки в основном потоке
-                const newVideoTrack = newVideoStream.getVideoTracks()[0];
-                const oldVideoTrack = localStream.getVideoTracks()[0];
-                
-                if (oldVideoTrack) {
-                    localStream.removeTrack(oldVideoTrack);
-                }
-                localStream.addTrack(newVideoTrack);
+                // Добавляем видео треки в основной поток
+                newVideoStream.getVideoTracks().forEach(track => {
+                    localStream.addTrack(track);
+                });
                 
                 // Обновляем видео элемент
                 localVideo.srcObject = localStream;
@@ -868,13 +853,9 @@
                     console.log('Входящий звонок от:', call.peer);
                     debugInfo.textContent = 'Входящий звонок от: ' + call.peer;
                     
-                    // Отвечаем на звонок с нашим видеопотоком (если доступен)
-                    if (localStream) {
-                        call.answer(localStream);
-                    } else {
-                        // Если медиа недоступны, все равно отвечаем с пустым потоком
-                        call.answer();
-                    }
+                    // ВСЕГДА отвечаем на звонок, даже если у нас нет медиа
+                    // PeerJS автоматически обработает отсутствие треков
+                    call.answer(localStream);
                     setupCall(call, call.peer);
                     addMessage(`Система: ${getUserName(call.peer)} присоединился к звонку`, 'system');
                 });
@@ -951,7 +932,7 @@
                     break;
                     
                 case 'user_joined':
-                    addUser(data.peerId, data.userName || `Участник ${users.size}`);
+                    addUser(data.peerId, data.userName || `Участник ${users.size}`, data.hasVideo, data.hasAudio);
                     if (data.peerId !== myPeerId) {
                         let deviceInfo = '';
                         if (data.hasVideo && data.hasAudio) {
@@ -1096,14 +1077,15 @@
                 return;
             }
             
-            if (!localStream && !hasAudio) {
+            // Разрешаем звонок даже если нет медиаустройств - можно слушать других
+            if (!localStream) {
                 callStatus.textContent = 'Медиаустройства не доступны';
                 callStatus.classList.add('error');
                 return;
             }
             
             callStatus.textContent = 'Запуск группового звонка...';
-            const callType = hasVideo ? 'видео' : 'аудио';
+            const callType = hasVideo ? 'видео' : (hasAudio ? 'аудио' : 'только прослушивание');
             debugInfo.textContent = `Начинаем ${callType}-звонок с ${connections.size} участниками`;
             
             // Отправляем запрос на звонок всем подключенным пользователям
@@ -1123,11 +1105,8 @@
         function startCallWithPeer(peerId) {
             debugInfo.textContent = 'Звонок пользователю: ' + peerId;
             
-            if (!localStream) {
-                debugInfo.textContent = 'Локальный поток не доступен для звонка';
-                return;
-            }
-            
+            // ВСЕГДА звоним, даже если у нас нет медиа
+            // PeerJS автоматически обработает отсутствие треков
             const call = peer.call(peerId, localStream);
             setupCall(call, peerId);
         }
@@ -1139,11 +1118,28 @@
             call.on('stream', (remoteStream) => {
                 console.log('Получен удаленный поток от:', peerId);
                 debugInfo.textContent = 'Получен медиапоток от: ' + peerId;
+                
+                // Проверяем, есть ли в потоке треки
+                const hasRemoteVideo = remoteStream.getVideoTracks().length > 0;
+                const hasRemoteAudio = remoteStream.getAudioTracks().length > 0;
+                
+                if (!hasRemoteVideo && !hasRemoteAudio) {
+                    debugInfo.textContent = 'Удаленный пользователь не имеет медиаустройств';
+                    addMessage(`Система: ${getUserName(peerId)} не имеет медиаустройств`, 'system');
+                    return;
+                }
+                
                 addVideoStream(peerId, remoteStream);
                 updateCallStatus();
                 callStatus.classList.add('success');
                 startCallBtn.disabled = true;
                 endCallBtn.disabled = false;
+                
+                // Информируем о доступных устройствах удаленного пользователя
+                let remoteDevices = [];
+                if (hasRemoteVideo) remoteDevices.push('видео');
+                if (hasRemoteAudio) remoteDevices.push('аудио');
+                addMessage(`Система: ${getUserName(peerId)} подключился к звонку (${remoteDevices.join('+')})`, 'system');
             });
             
             call.on('close', () => {
@@ -1176,7 +1172,7 @@
             video.srcObject = stream;
             video.autoplay = true;
             video.playsInline = true;
-            video.muted = false;
+            video.muted = false; // Важно: не mute для удаленных потоков!
             
             const label = document.createElement('div');
             label.className = 'video-label';
@@ -1349,10 +1345,14 @@
                         const senders = call.peerConnection.getSenders();
                         senders.forEach(sender => {
                             if (sender.track && sender.track.kind === 'video') {
-                                sender.replaceTrack(videoTrack);
+                                if (videoTrack) {
+                                    sender.replaceTrack(videoTrack);
+                                }
                             }
                             if (sender.track && sender.track.kind === 'audio') {
-                                sender.replaceTrack(audioTrack);
+                                if (audioTrack) {
+                                    sender.replaceTrack(audioTrack);
+                                }
                             }
                         });
                     });
