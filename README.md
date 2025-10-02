@@ -1,3 +1,5 @@
+https://raw.githubusercontent.com/Ezoxer/Shuck-s-Messenger/refs/heads/main/assets/IMG_20251002_125900_657.jpg
+
 🥚 Начни общение прямо сейчас - https://ezoxer.github.io/Shuck-s-Messenger/
 
 💰 Подержать - https://www.donationalerts.com/r/exxxorex1c
