@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Локальный мессенджер</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            color: white;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.8;
+        }
+        
+        .content {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .setup-section {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .setup-section h2 {
+            margin-bottom: 15px;
+            font-size: 1.5rem;
+        }
+        
+        .buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #4a00e0;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 50px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        button:hover {
+            background: #8e2de2;
+            transform: translateY(-2px);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button.secondary {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        button.secondary:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        input {
+            width: 100%;
+            padding: 12px 20px;
+            border-radius: 50px;
+            border: none;
+            background: rgba(255, 255, 255, 0.15);
+            color: white;
+            font-size: 1rem;
+            margin-bottom: 15px;
+        }
+        
+        input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .code-display {
+            font-size: 2rem;
+            font-weight: bold;
+            letter-spacing: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+        
+        .chat-section {
+            display: none;
+            flex-direction: column;
+            height: 400px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        .chat-header {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .message {
+            max-width: 70%;
+            padding: 10px 15px;
+            border-radius: 20px;
+            word-break: break-word;
+        }
+        
+        .message.own {
+            align-self: flex-end;
+            background: #4a00e0;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .message.other {
+            align-self: flex-start;
+            background: rgba(255, 255, 255, 0.2);
+            border-bottom-left-radius: 5px;
+        }
+        
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.1);
+        }
+        
+        .chat-input input {
+            flex: 1;
+            margin: 0;
+        }
+        
+        .chat-input button {
+            padding: 10px 20px;
+        }
+        
+        .call-section {
+            display: none;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .video-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .video-box {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            aspect-ratio: 4/3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .call-controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 10px;
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Локальный мессенджер</h1>
+            <p>Чат и видеозвонки прямо в браузере</p>
+        </div>
+        
+        <div class="content">
+            <div class="setup-section" id="setupSection">
+                <h2>Создайте или присоединитесь к комнате</h2>
+                <div class="buttons">
+                    <button id="createRoomBtn">Создать комнату</button>
+                    <button id="joinRoomBtn" class="secondary">Присоединиться</button>
+                </div>
+                
+                <div id="createRoomSection" class="hidden">
+                    <p>Поделитесь этим кодом с другом:</p>
+                    <div class="code-display" id="roomCodeDisplay">XXXXXX</div>
+                    <button id="startChatBtn">Начать общение</button>
+                </div>
+                
+                <div id="joinRoomSection" class="hidden">
+                    <p>Введите код комнаты:</p>
+                    <input type="text" id="roomCodeInput" placeholder="Введите код комнаты">
+                    <button id="connectToRoomBtn">Подключиться</button>
+                </div>
+            </div>
+            
+            <div class="chat-section" id="chatSection">
+                <div class="chat-header">
+                    <h3>Чат</h3>
+                    <div id="connectionStatus">Подключение...</div>
+                </div>
+                <div class="chat-messages" id="chatMessages"></div>
+                <div class="chat-input">
+                    <input type="text" id="messageInput" placeholder="Введите сообщение...">
+                    <button id="sendMessageBtn">Отправить</button>
+                </div>
+            </div>
+            
+            <div class="call-section" id="callSection">
+                <h2>Видеозвонок</h2>
+                <div class="video-container">
+                    <div class="video-box">
+                        <video id="localVideo" autoplay muted></video>
+                    </div>
+                    <div class="video-box">
+                        <video id="remoteVideo" autoplay></video>
+                    </div>
+                </div>
+                <div class="call-controls">
+                    <button id="startCallBtn">Начать звонок</button>
+                    <button id="endCallBtn" class="secondary">Завершить</button>
+                </div>
+                <div class="status" id="callStatus">Готов к звонку</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Подключаем PeerJS библиотеку -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    
+    <script>
+        // Элементы DOM
+        const setupSection = document.getElementById('setupSection');
+        const createRoomSection = document.getElementById('createRoomSection');
+        const joinRoomSection = document.getElementById('joinRoomSection');
+        const chatSection = document.getElementById('chatSection');
+        const callSection = document.getElementById('callSection');
+        
+        const createRoomBtn = document.getElementById('createRoomBtn');
+        const joinRoomBtn = document.getElementById('joinRoomBtn');
+        const startChatBtn = document.getElementById('startChatBtn');
+        const connectToRoomBtn = document.getElementById('connectToRoomBtn');
+        
+        const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const roomCodeInput = document.getElementById('roomCodeInput');
+        
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendMessageBtn = document.getElementById('sendMessageBtn');
+        const connectionStatus = document.getElementById('connectionStatus');
+        
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const startCallBtn = document.getElementById('startCallBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const callStatus = document.getElementById('callStatus');
+        
+        // Переменные приложения
+        let peer = null;
+        let conn = null;
+        let currentRoomCode = null;
+        let isHost = false;
+        let localStream = null;
+        let remoteStream = null;
+        
+        // Генерация случайного кода комнаты
+        function generateRoomCode() {
+            return Math.random().toString(36).substring(2, 8).toUpperCase();
+        }
+        
+        // Создание комнаты
+        createRoomBtn.addEventListener('click', () => {
+            currentRoomCode = generateRoomCode();
+            roomCodeDisplay.textContent = currentRoomCode;
+            createRoomSection.classList.remove('hidden');
+            joinRoomSection.classList.add('hidden');
+            isHost = true;
+        });
+        
+        // Присоединение к комнате
+        joinRoomBtn.addEventListener('click', () => {
+            createRoomSection.classList.add('hidden');
+            joinRoomSection.classList.remove('hidden');
+            isHost = false;
+        });
+        
+        // Начать общение (хост)
+        startChatBtn.addEventListener('click', () => {
+            initializePeer(currentRoomCode);
+            setupSection.style.display = 'none';
+            chatSection.style.display = 'flex';
+            callSection.style.display = 'block';
+            connectionStatus.textContent = 'Ожидание подключения...';
+        });
+        
+        // Подключиться к комнате (клиент)
+        connectToRoomBtn.addEventListener('click', () => {
+            currentRoomCode = roomCodeInput.value.trim();
+            if (currentRoomCode) {
+                initializePeer();
+                setupSection.style.display = 'none';
+                chatSection.style.display = 'flex';
+                callSection.style.display = 'block';
+                connectionStatus.textContent = 'Подключение...';
+            } else {
+                alert('Пожалуйста, введите код комнаты');
+            }
+        });
+        
+        // Инициализация Peer соединения
+        function initializePeer(id = null) {
+            // Создаем Peer с ID или без (генерируется автоматически)
+            peer = id ? new Peer(id) : new Peer();
+            
+            peer.on('open', (id) => {
+                console.log('Peer подключен с ID:', id);
+                if (!isHost) {
+                    // Если мы клиент, подключаемся к хосту
+                    conn = peer.connect(currentRoomCode);
+                    setupConnection();
+                }
+            });
+            
+            peer.on('connection', (connection) => {
+                // Хост принимает входящее соединение
+                conn = connection;
+                setupConnection();
+            });
+            
+            peer.on('error', (err) => {
+                console.error('Peer error:', err);
+                connectionStatus.textContent = 'Ошибка подключения';
+            });
+            
+            // Обработка входящих видеозвонков
+            peer.on('call', (call) => {
+                // Получаем наш локальный видеопоток
+                navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                    .then(stream => {
+                        localStream = stream;
+                        localVideo.srcObject = stream;
+                        
+                        // Отвечаем на звонок с нашим видеопотоком
+                        call.answer(stream);
+                        
+                        // Получаем удаленный видеопоток
+                        call.on('stream', (remoteStream) => {
+                            remoteVideo.srcObject = remoteStream;
+                            callStatus.textContent = 'Звонок активен';
+                            startCallBtn.disabled = true;
+                            endCallBtn.disabled = false;
+                        });
+                        
+                        call.on('close', () => {
+                            endCall();
+                        });
+                    })
+                    .catch(err => {
+                        console.error('Ошибка доступа к медиаустройствам:', err);
+                        callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                    });
+            });
+        }
+        
+        // Настройка соединения для обмена сообщениями
+        function setupConnection() {
+            conn.on('open', () => {
+                console.log('Соединение установлено');
+                connectionStatus.textContent = 'Подключено';
+                
+                // Отправляем приветственное сообщение
+                if (isHost) {
+                    addMessage('Система: Вы создали комнату. Ожидание участников...', 'system');
+                } else {
+                    addMessage('Система: Вы присоединились к комнате', 'system');
+                    // Уведомляем хост о подключении
+                    conn.send({ type: 'user_joined', message: 'Пользователь присоединился' });
+                }
+            });
+            
+            conn.on('data', (data) => {
+                console.log('Получены данные:', data);
+                
+                if (data.type === 'chat') {
+                    addMessage(data.message, 'other');
+                } else if (data.type === 'user_joined') {
+                    addMessage('Система: Пользователь присоединился к чату', 'system');
+                }
+            });
+            
+            conn.on('close', () => {
+                console.log('Соединение закрыто');
+                connectionStatus.textContent = 'Соединение разорвано';
+                addMessage('Система: Соединение разорвано', 'system');
+            });
+        }
+        
+        // Отправка сообщения
+        sendMessageBtn.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message && conn) {
+                conn.send({ type: 'chat', message: message });
+                addMessage(message, 'own');
+                messageInput.value = '';
+            }
+        }
+        
+        // Добавление сообщения в чат
+        function addMessage(message, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message');
+            messageElement.classList.add(sender === 'own' ? 'own' : 
+                                       sender === 'system' ? 'system' : 'other');
+            messageElement.textContent = message;
+            chatMessages.appendChild(messageElement);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        // Начать видеозвонок
+        startCallBtn.addEventListener('click', startCall);
+        
+        function startCall() {
+            callStatus.textContent = 'Установка соединения...';
+            
+            // Получаем доступ к камере и микрофону
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    
+                    // Звоним другому участнику
+                    const call = peer.call(currentRoomCode, stream);
+                    
+                    // Получаем удаленный видеопоток
+                    call.on('stream', (remoteStream) => {
+                        remoteVideo.srcObject = remoteStream;
+                        callStatus.textContent = 'Звонок активен';
+                        startCallBtn.disabled = true;
+                        endCallBtn.disabled = false;
+                    });
+                    
+                    call.on('close', () => {
+                        endCall();
+                    });
+                })
+                .catch(err => {
+                    console.error('Ошибка доступа к медиаустройствам:', err);
+                    callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                });
+        }
+        
+        // Завершить видеозвонок
+        endCallBtn.addEventListener('click', endCall);
+        
+        function endCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+            
+            callStatus.textContent = 'Звонок завершен';
+            startCallBtn.disabled = false;
+            endCallBtn.disabled = true;
+        }
+    </script>
+</body>
+</html>
