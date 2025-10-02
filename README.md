@@ -2,6 +2,14 @@
 
 🥚 Начни общение прямо сейчас - https://ezoxer.github.io/Shuck-s-Messenger/
 
+🤖 СМ в тг боте - @SucksMessengerBot
+
+⚡️ тгк СМ - https://t.me/SucksMessengerChannel
+
+🆘 инфо и помощь - https://telegra.ph/O-Messendzhere-Saks-10-02
+
+
+
 💰 Подержать - https://www.donationalerts.com/r/exxxorex1c
 
 Локальный мессенджер P2P Connect
