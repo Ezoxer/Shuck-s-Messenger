@@ -350,6 +350,15 @@
             margin-top: 10px;
         }
 
+        .listen-only {
+            background: rgba(255, 165, 0, 0.3);
+        }
+
+        .listen-only span {
+            font-size: 0.9rem;
+            color: #ffa500;
+        }
+
         /* Стиль для кнопки переключения камеры */
         .switch-camera-btn {
             display: none; /* По умолчанию скрыта */
@@ -697,6 +706,7 @@
                 // Обновляем текст в зависимости от доступных устройств
                 if (hasVideo && hasAudio) {
                     addMessage('Система: Камера и микрофон подключены', 'system');
+                    startCallBtn.textContent = 'Начать видеозвонок';
                 } else if (hasVideo) {
                     addMessage('Система: Камера подключена (микрофон не доступен)', 'system');
                     startCallBtn.textContent = 'Начать видеозвонок';
@@ -704,16 +714,17 @@
                     addMessage('Система: Микрофон подключен (камера не доступна)', 'system');
                     startCallBtn.textContent = 'Начать аудиозвонок';
                 } else {
-                    addMessage('Система: Медиаустройства не доступны', 'system');
-                    callStatus.textContent = 'Медиаустройства не доступны';
-                    callStatus.classList.add('error');
-                    startCallBtn.disabled = true;
+                    addMessage('Система: Медиаустройства не доступны (режим прослушивания)', 'system');
+                    startCallBtn.textContent = 'Присоединиться к звонку';
+                    startCallBtn.classList.add('listen-only');
                 }
             } else {
-                addMessage('Система: Не удалось получить доступ к медиаустройствам', 'system');
-                callStatus.textContent = 'Медиаустройства не доступны';
-                callStatus.classList.add('error');
-                startCallBtn.disabled = true;
+                // Если не удалось создать поток, все равно разрешаем звонки
+                addMessage('Система: Медиаустройства не доступны (режим прослушивания)', 'system');
+                callStatus.textContent = 'Готов к звонку (режим прослушивания)';
+                startCallBtn.disabled = false;
+                startCallBtn.textContent = 'Присоединиться к звонку';
+                startCallBtn.classList.add('listen-only');
             }
         }
         
@@ -867,7 +878,13 @@
                     debugInfo.textContent = 'Входящий звонок от: ' + call.peer;
                     
                     // ВСЕГДА отвечаем на звонок, даже если у нас нет медиа
-                    call.answer(localStream);
+                    if (localStream) {
+                        call.answer(localStream);
+                    } else {
+                        // Если нет локального потока, создаем пустой
+                        const emptyStream = new MediaStream();
+                        call.answer(emptyStream);
+                    }
                     setupCall(call, call.peer);
                     
                     const remoteUserName = getUserName(call.peer);
@@ -956,6 +973,8 @@
                             deviceInfo = ' (только камера)';
                         } else if (data.hasAudio) {
                             deviceInfo = ' (только микрофон)';
+                        } else {
+                            deviceInfo = ' (режим прослушивания)';
                         }
                         addMessage(`Система: ${data.userName} присоединился к чату${deviceInfo}`, 'system');
                     }
@@ -1048,6 +1067,8 @@
                     icon = '📹';
                 } else if (userInfo.hasAudio) {
                     icon = '🎤';
+                } else {
+                    icon = '👂';
                 }
                 
                 const displayName = userInfo.isMe ? `${userInfo.name} (Вы)` : userInfo.name;
@@ -1106,16 +1127,23 @@
                 return;
             }
             
-            // Разрешаем звонок даже если нет медиаустройств - можно слушать других
-            if (!localStream) {
-                callStatus.textContent = 'Медиаустройства не доступны';
-                callStatus.classList.add('error');
-                return;
-            }
-            
+            // РАЗРЕШАЕМ звонок даже если нет медиаустройств
             isCallActive = true;
             callStatus.textContent = 'Запуск группового звонка...';
-            const callType = hasVideo ? 'видео' : (hasAudio ? 'аудио' : 'только прослушивание');
+            
+            // Определяем тип звонка в зависимости от доступных устройств
+            let callType = '';
+            if (hasVideo && hasAudio) {
+                callType = 'видео';
+            } else if (hasVideo) {
+                callType = 'видео (без микрофона)';
+            } else if (hasAudio) {
+                callType = 'аудио';
+            } else {
+                callType = 'режим прослушивания';
+                callStatus.classList.add('listen-only');
+            }
+            
             debugInfo.textContent = `Начинаем ${callType}-звонок с ${connections.size} участниками`;
             
             // Отправляем запрос на звонок всем подключенным пользователям
@@ -1136,7 +1164,9 @@
             debugInfo.textContent = 'Звонок пользователю: ' + peerId;
             
             // ВСЕГДА звоним, даже если у нас нет медиа
-            const call = peer.call(peerId, localStream);
+            // Если нет локального потока, создаем пустой
+            const streamToSend = localStream || new MediaStream();
+            const call = peer.call(peerId, streamToSend);
             setupCall(call, peerId);
         }
         
@@ -1153,22 +1183,24 @@
                 const hasRemoteAudio = remoteStream.getAudioTracks().length > 0;
                 
                 if (!hasRemoteVideo && !hasRemoteAudio) {
-                    debugInfo.textContent = 'Удаленный пользователь не имеет медиаустройств';
-                    addMessage(`Система: ${getUserName(peerId)} не имеет медиаустройств`, 'system');
-                    return;
+                    debugInfo.textContent = 'Удаленный пользователь не имеет медиаустройств (режим прослушивания)';
+                    addMessage(`Система: ${getUserName(peerId)} в режиме прослушивания`, 'system');
+                    // Все равно добавляем placeholder для отображения пользователя
+                    addVideoStream(peerId, remoteStream);
+                } else {
+                    addVideoStream(peerId, remoteStream);
+                    
+                    // Информируем о доступных устройствах удаленного пользователя
+                    let remoteDevices = [];
+                    if (hasRemoteVideo) remoteDevices.push('видео');
+                    if (hasRemoteAudio) remoteDevices.push('аудио');
+                    addMessage(`Система: ${getUserName(peerId)} подключился к звонку (${remoteDevices.join('+')})`, 'system');
                 }
                 
-                addVideoStream(peerId, remoteStream);
                 updateCallStatus();
                 callStatus.classList.add('success');
                 startCallBtn.disabled = true;
                 endCallBtn.disabled = false;
-                
-                // Информируем о доступных устройствах удаленного пользователя
-                let remoteDevices = [];
-                if (hasRemoteVideo) remoteDevices.push('видео');
-                if (hasRemoteAudio) remoteDevices.push('аудио');
-                addMessage(`Система: ${getUserName(peerId)} подключился к звонку (${remoteDevices.join('+')})`, 'system');
             });
             
             call.on('close', () => {
@@ -1215,7 +1247,15 @@
                 // Если нет видео, показываем placeholder
                 const noVideo = document.createElement('div');
                 noVideo.className = 'no-video';
-                noVideo.innerHTML = '<i class="fas fa-user"></i><span>Только аудио</span>';
+                
+                if (audioTracks.length === 0) {
+                    // Если нет и аудио - режим прослушивания
+                    noVideo.innerHTML = '<i class="fas fa-user"></i><span>Режим прослушивания</span>';
+                    noVideo.classList.add('listen-only');
+                } else {
+                    // Если есть аудио, но нет видео
+                    noVideo.innerHTML = '<i class="fas fa-user"></i><span>Только аудио</span>';
+                }
                 
                 videoBox.appendChild(noVideo);
             } else {
@@ -1261,7 +1301,22 @@
                 isCallActive = false;
                 callStatus.textContent = 'Звонок завершен';
                 callStatus.classList.remove('success');
+                callStatus.classList.remove('listen-only');
                 startCallBtn.disabled = false;
+                startCallBtn.classList.remove('listen-only');
+                
+                // Восстанавливаем текст кнопки в зависимости от устройств
+                if (hasVideo && hasAudio) {
+                    startCallBtn.textContent = 'Начать групповой звонок';
+                } else if (hasVideo) {
+                    startCallBtn.textContent = 'Начать видеозвонок';
+                } else if (hasAudio) {
+                    startCallBtn.textContent = 'Начать аудиозвонок';
+                } else {
+                    startCallBtn.textContent = 'Присоединиться к звонку';
+                    startCallBtn.classList.add('listen-only');
+                }
+                
                 endCallBtn.disabled = true;
             } else {
                 callStatus.textContent = `Звонок активен (${activeCalls + 1} участников)`;
