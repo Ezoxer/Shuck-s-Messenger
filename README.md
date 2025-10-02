@@ -8,7 +8,7 @@
 
 🆘 инфо и помощь - https://telegra.ph/O-Messendzhere-Saks-10-02
 
-
+🤝 сотрудничество/вопросы - http://t.me/a1b1ba
 
 💰 Подержать - https://www.donationalerts.com/r/exxxorex1c
 
