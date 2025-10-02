@@ -498,24 +498,14 @@
         let hasVideo = false;
         let hasAudio = false;
         let isMobile = false;
-        let currentFacingMode = 'user';
+        let currentFacingMode = 'user'; // 'user' - фронтальная, 'environment' - задняя
         let availableCameras = [];
-        let myUserName = 'Вы';
         
         // Хранилище подключений и звонков
         const connections = new Map();
         const calls = new Map();
         const users = new Map();
         let myPeerId = null;
-
-        // Генерация случайного имени пользователя
-        function generateUserName() {
-            const adjectives = ['Веселый', 'Умный', 'Быстрый', 'Смелый', 'Добрый', 'Яркий', 'Спокойный', 'Активный'];
-            const nouns = ['Кот', 'Пес', 'Тигр', 'Орел', 'Дракон', 'Феникс', 'Единорог', 'Волк'];
-            const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-            const noun = nouns[Math.floor(Math.random() * nouns.length)];
-            return `${adj} ${noun}`;
-        }
 
         // Проверка на мобильное устройство
         function checkMobileDevice() {
@@ -544,7 +534,6 @@
             createRoomSection.classList.remove('hidden');
             joinRoomSection.classList.add('hidden');
             isHost = true;
-            myUserName = 'Хост';
         });
         
         // Присоединение к комнате
@@ -552,7 +541,6 @@
             createRoomSection.classList.add('hidden');
             joinRoomSection.classList.remove('hidden');
             isHost = false;
-            myUserName = generateUserName();
         });
         
         // Начать общение (хост)
@@ -838,8 +826,8 @@
                     connectionStatus.textContent = 'Подключено (ID: ' + id + ')';
                     connectionStatus.classList.add('success');
                     
-                    // Добавляем себя в список пользователей с правильным именем
-                    addUser(id, myUserName, hasVideo, hasAudio, true);
+                    // Добавляем себя в список пользователей
+                    addUser(id, 'Вы');
                     
                     if (!isHost) {
                         setTimeout(() => {
@@ -866,11 +854,10 @@
                     debugInfo.textContent = 'Входящий звонок от: ' + call.peer;
                     
                     // ВСЕГДА отвечаем на звонок, даже если у нас нет медиа
+                    // PeerJS автоматически обработает отсутствие треков
                     call.answer(localStream);
                     setupCall(call, call.peer);
-                    
-                    const remoteUserName = getUserName(call.peer);
-                    addMessage(`Система: ${remoteUserName} присоединился к звонку`, 'system');
+                    addMessage(`Система: ${getUserName(call.peer)} присоединился к звонку`, 'system');
                 });
                 
             } catch (error) {
@@ -905,7 +892,7 @@
                 connection.send({ 
                     type: 'user_joined', 
                     peerId: myPeerId,
-                    userName: myUserName,
+                    userName: `Участник ${users.size}`,
                     hasVideo: hasVideo,
                     hasAudio: hasAudio
                 });
@@ -945,9 +932,8 @@
                     break;
                     
                 case 'user_joined':
-                    // НЕ добавляем себя повторно через входящее соединение
+                    addUser(data.peerId, data.userName || `Участник ${users.size}`, data.hasVideo, data.hasAudio);
                     if (data.peerId !== myPeerId) {
-                        addUser(data.peerId, data.userName, data.hasVideo, data.hasAudio);
                         let deviceInfo = '';
                         if (data.hasVideo && data.hasAudio) {
                             deviceInfo = ' (камера+микрофон)';
@@ -956,7 +942,7 @@
                         } else if (data.hasAudio) {
                             deviceInfo = ' (только микрофон)';
                         }
-                        addMessage(`Система: ${data.userName} присоединился к чату${deviceInfo}`, 'system');
+                        addMessage(`Система: ${getUserName(data.peerId)} присоединился к чату${deviceInfo}`, 'system');
                     }
                     break;
                     
@@ -993,13 +979,12 @@
         }
         
         // Добавление пользователя
-        function addUser(peerId, userName, hasVideo = false, hasAudio = false, isMe = false) {
+        function addUser(peerId, userName, hasVideo = false, hasAudio = false) {
             users.set(peerId, { 
                 name: userName, 
                 joined: Date.now(),
                 hasVideo: hasVideo,
-                hasAudio: hasAudio,
-                isMe: isMe
+                hasAudio: hasAudio
             });
             updateUserList();
         }
@@ -1016,15 +1001,7 @@
         
         // Получение имени пользователя
         function getUserName(peerId) {
-            const user = users.get(peerId);
-            if (!user) return `Участник ${peerId?.substring(0, 4) || 'unknown'}`;
-            return user.name;
-        }
-        
-        // Проверка, является ли пользователь текущим
-        function isMe(peerId) {
-            const user = users.get(peerId);
-            return user ? user.isMe : false;
+            return users.get(peerId)?.name || `Участник ${peerId?.substring(0, 4) || 'unknown'}`;
         }
         
         // Обновление списка пользователей
@@ -1045,8 +1022,7 @@
                     icon = '🎤';
                 }
                 
-                const displayName = userInfo.isMe ? `${userInfo.name} (Вы)` : userInfo.name;
-                userElement.textContent = `${displayName} ${icon}`;
+                userElement.textContent = `${userInfo.name} ${icon}`;
                 userElement.title = `ID: ${peerId}`;
                 userList.appendChild(userElement);
             });
@@ -1065,7 +1041,7 @@
                 connections.forEach((conn, peerId) => {
                     conn.send({ type: 'chat', message: message });
                 });
-                addMessage(message, 'own', myUserName);
+                addMessage(message, 'own', 'Вы');
                 messageInput.value = '';
             } else if (connections.size === 0) {
                 addMessage('Система: Нет подключенных пользователей', 'system');
@@ -1130,6 +1106,7 @@
             debugInfo.textContent = 'Звонок пользователю: ' + peerId;
             
             // ВСЕГДА звоним, даже если у нас нет медиа
+            // PeerJS автоматически обработает отсутствие треков
             const call = peer.call(peerId, localStream);
             setupCall(call, peerId);
         }
@@ -1300,7 +1277,7 @@
                     debugInfo.textContent = `Микрофон ${isAudioEnabled ? 'включен' : 'выключен'}`;
                 }
             }
-        }
+        });
         
         // Переключение демонстрации экрана
         toggleScreenBtn.addEventListener('click', toggleScreenShare);
