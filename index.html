@@ -333,6 +333,23 @@
             margin-top: 10px;
             font-size: 0.8rem;
         }
+
+        .browser-warning {
+            background: rgba(255, 165, 0, 0.3);
+            border: 1px solid rgba(255, 165, 0, 0.5);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .firefox-fix {
+            background: rgba(255, 69, 0, 0.2);
+            border: 1px solid rgba(255, 69, 0, 0.5);
+            padding: 10px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -346,6 +363,19 @@
         <div class="content">
             <div class="setup-section" id="setupSection">
                 <h2>Создайте или присоединитесь к комнате</h2>
+                
+                <!-- Предупреждение для Firefox -->
+                <div class="firefox-fix" id="firefoxWarning" style="display: none;">
+                    <i class="fab fa-firefox"></i>
+                    <strong>FireFox пользователи:</strong> Для работы камеры и микрофона разрешите автовоспроизведение медиа на сайте
+                </div>
+
+                <!-- Предупреждение для мобильных -->
+                <div class="browser-warning" id="mobileWarning" style="display: none;">
+                    <i class="fas fa-mobile-alt"></i>
+                    <strong>Мобильные пользователи:</strong> Демонстрация экрана может не поддерживаться в некоторых браузерах
+                </div>
+                
                 <div class="buttons">
                     <button id="createRoomBtn">Создать комнату</button>
                     <button id="joinRoomBtn" class="secondary">Присоединиться</button>
@@ -385,7 +415,7 @@
                 <h2 style="text-align: center;">Групповой видеозвонок</h2>
                 <div class="video-grid" id="videoGrid">
                     <div class="video-box">
-                        <video id="localVideo" autoplay muted></video>
+                        <video id="localVideo" autoplay muted playsinline></video>
                         <div class="video-label">Вы</div>
                     </div>
                 </div>
@@ -425,6 +455,8 @@
         const joinRoomSection = document.getElementById('joinRoomSection');
         const chatSection = document.getElementById('chatSection');
         const callSection = document.getElementById('callSection');
+        const firefoxWarning = document.getElementById('firefoxWarning');
+        const mobileWarning = document.getElementById('mobileWarning');
         
         const createRoomBtn = document.getElementById('createRoomBtn');
         const joinRoomBtn = document.getElementById('joinRoomBtn');
@@ -466,6 +498,23 @@
         const calls = new Map();
         const users = new Map();
         let myPeerId = null;
+        let userCounter = 1; // Счетчик для нумерации участников
+
+        // Определяем браузер и устройство
+        const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+        // Показываем предупреждения
+        if (isFirefox) {
+            firefoxWarning.style.display = 'block';
+        }
+        if (isMobile) {
+            mobileWarning.style.display = 'block';
+            // На мобильных скрываем кнопку демонстрации экрана, если не поддерживается
+            if (!navigator.mediaDevices.getDisplayMedia) {
+                toggleScreenBtn.style.display = 'none';
+            }
+        }
 
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -479,6 +528,7 @@
             createRoomSection.classList.remove('hidden');
             joinRoomSection.classList.add('hidden');
             isHost = true;
+            userCounter = 1; // Сбрасываем счетчик при создании комнаты
         });
         
         // Присоединение к комнате
@@ -513,12 +563,16 @@
             }
         });
         
-        // Инициализация медиаустройств
+        // Инициализация медиаустройств с учетом браузера
         async function initializeMedia() {
             try {
                 debugInfo.textContent = 'Запрос доступа к камере и микрофону...';
                 
-                localStream = await navigator.mediaDevices.getUserMedia({ 
+                // Для Firefox используем более простые настройки
+                const constraints = isFirefox ? {
+                    video: true,
+                    audio: true
+                } : {
                     video: {
                         width: { ideal: 1280 },
                         height: { ideal: 720 },
@@ -529,17 +583,47 @@
                         noiseSuppression: true,
                         autoGainControl: true
                     }
-                });
+                };
+                
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                // Для Firefox добавляем обработку автовоспроизведения
+                if (isFirefox) {
+                    localVideo.muted = true;
+                    await localVideo.play().catch(e => {
+                        debugInfo.textContent = 'FireFox: требуется разрешить автовоспроизведение';
+                    });
+                }
                 
                 localVideo.srcObject = localStream;
                 debugInfo.textContent = 'Камера и микрофон подключены';
                 updateMediaButtons();
                 
+                // Проверяем доступные устройства
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const cameras = devices.filter(device => device.kind === 'videoinput');
+                const mics = devices.filter(device => device.kind === 'audioinput');
+                
+                debugInfo.textContent += ` | Камеры: ${cameras.length} | Микрофоны: ${mics.length}`;
+                
             } catch (error) {
                 console.error('Ошибка доступа к медиаустройствам:', error);
                 debugInfo.textContent = 'Ошибка доступа к камере/микрофону: ' + error.message;
-                addMessage('Система: Ошибка доступа к камере/микрофону', 'system');
+                
+                if (error.name === 'NotAllowedError') {
+                    addMessage('Система: Разрешите доступ к камере и микрофону в настройках браузера', 'system');
+                } else if (error.name === 'NotFoundError') {
+                    addMessage('Система: Камера или микрофон не найдены', 'system');
+                } else {
+                    addMessage('Система: Ошибка доступа к медиаустройствам', 'system');
+                }
             }
+        }
+
+        // Генерация уникального имени пользователя
+        function generateUserName(peerId) {
+            const userNumber = userCounter++;
+            return `Участник ${userNumber}`;
         }
         
         // Инициализация Peer соединения
@@ -566,11 +650,12 @@
                 peer.on('open', (id) => {
                     console.log('Peer подключен с ID:', id);
                     myPeerId = id;
-                    connectionStatus.textContent = 'Подключено (ID: ' + id + ')';
+                    connectionStatus.textContent = 'Подключено';
                     connectionStatus.classList.add('success');
                     
-                    // Добавляем себя в список пользователей
-                    addUser(id, 'Вы');
+                    // Добавляем себя в список пользователей с уникальным именем
+                    const myUserName = generateUserName(id);
+                    addUser(id, myUserName);
                     
                     if (!isHost) {
                         setTimeout(() => {
@@ -586,7 +671,7 @@
                 
                 peer.on('error', (err) => {
                     console.error('Peer error:', err);
-                    connectionStatus.textContent = 'Ошибка: ' + err.type;
+                    connectionStatus.textContent = 'Ошибка подключения';
                     connectionStatus.classList.add('error');
                     debugInfo.textContent = 'Ошибка Peer: ' + err.type;
                 });
@@ -597,9 +682,13 @@
                     debugInfo.textContent = 'Входящий звонок от: ' + call.peer;
                     
                     // Отвечаем на звонок с нашим видеопотоком
-                    call.answer(localStream);
-                    setupCall(call, call.peer);
-                    addMessage(`Система: ${getUserName(call.peer)} присоединился к звонку`, 'system');
+                    if (localStream) {
+                        call.answer(localStream);
+                        setupCall(call, call.peer);
+                        addMessage(`Система: ${getUserName(call.peer)} присоединился к звонку`, 'system');
+                    } else {
+                        debugInfo.textContent = 'Ошибка: локальный поток не доступен';
+                    }
                 });
                 
             } catch (error) {
@@ -631,10 +720,11 @@
                 debugInfo.textContent = 'Соединение установлено с: ' + connection.peer;
                 
                 // Отправляем информацию о себе
+                const myUserName = getUserName(myPeerId);
                 connection.send({ 
                     type: 'user_joined', 
                     peerId: myPeerId,
-                    userName: `Участник ${users.size}`
+                    userName: myUserName
                 });
                 
                 // Запрашиваем список пользователей у хоста
@@ -672,9 +762,12 @@
                     break;
                     
                 case 'user_joined':
-                    addUser(data.peerId, data.userName || `Участник ${users.size}`);
-                    if (data.peerId !== myPeerId) {
-                        addMessage(`Система: ${getUserName(data.peerId)} присоединился к чату`, 'system');
+                    // Если пользователь уже есть, не добавляем заново
+                    if (!users.has(data.peerId)) {
+                        addUser(data.peerId, data.userName);
+                        if (data.peerId !== myPeerId) {
+                            addMessage(`Система: ${data.userName} присоединился к чату`, 'system');
+                        }
                     }
                     break;
                     
@@ -823,7 +916,11 @@
                 return;
             }
             
-            const call = peer.call(peerId, localStream);
+            const call = peer.call(peerId, localStream, {
+                metadata: {
+                    userName: getUserName(myPeerId)
+                }
+            });
             setupCall(call, peerId);
         }
         
@@ -971,22 +1068,35 @@
         toggleScreenBtn.addEventListener('click', toggleScreenShare);
         
         async function toggleScreenShare() {
+            // Проверяем поддержку демонстрации экрана
+            if (!navigator.mediaDevices.getDisplayMedia) {
+                debugInfo.textContent = 'Демонстрация экрана не поддерживается в этом браузере';
+                addMessage('Система: Демонстрация экрана не поддерживается', 'system');
+                return;
+            }
+            
             if (!isScreenSharing) {
                 try {
                     debugInfo.textContent = 'Запрос демонстрации экрана...';
                     
-                    screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    // Для мобильных используем упрощенные настройки
+                    const constraints = isMobile ? {
+                        video: true,
+                        audio: false // На мобильных аудио с экрана обычно не поддерживается
+                    } : {
                         video: {
                             cursor: 'always',
                             displaySurface: 'window'
                         },
                         audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            sampleRate: 44100,
-            channelCount: 2
-        }
-                    });
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            sampleRate: 44100,
+                            channelCount: 2
+                        }
+                    };
+                    
+                    screenStream = await navigator.mediaDevices.getDisplayMedia(constraints);
                     
                     debugInfo.textContent = 'Демонстрация экрана начата';
                     
@@ -1020,6 +1130,10 @@
                 } catch (err) {
                     console.error('Ошибка демонстрации экрана:', err);
                     debugInfo.textContent = 'Ошибка демонстрации экрана: ' + err.message;
+                    
+                    if (err.name === 'NotAllowedError') {
+                        addMessage('Система: Разрешение на демонстрацию экрана отклонено', 'system');
+                    }
                 }
             } else {
                 // Возвращаем камеру
