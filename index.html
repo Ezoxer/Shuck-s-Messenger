@@ -279,6 +279,16 @@
         .icon-btn i {
             font-size: 1.2rem;
         }
+
+        .error {
+            background: rgba(255, 0, 0, 0.2);
+            border: 1px solid rgba(255, 0, 0, 0.5);
+        }
+
+        .success {
+            background: rgba(0, 255, 0, 0.2);
+            border: 1px solid rgba(0, 255, 0, 0.5);
+        }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
@@ -396,6 +406,7 @@
         let isVideoEnabled = true;
         let isAudioEnabled = true;
         let isConnected = false;
+        let peerId = null;
         
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -443,49 +454,127 @@
         
         // Инициализация Peer соединения
         function initializePeer(id = null) {
-            // Создаем Peer с ID или без (генерируется автоматически)
-            peer = id ? new Peer(id, {debug: 2}) : new Peer({debug: 2});
-            
-            peer.on('open', (id) => {
-                console.log('Peer подключен с ID:', id);
-                if (!isHost) {
-                    // Если мы клиент, подключаемся к хосту
-                    conn = peer.connect(currentRoomCode);
-                    setupConnection();
+            try {
+                // Используем более надежные настройки PeerJS
+                const peerOptions = {
+                    debug: 3,
+                    config: {
+                        'iceServers': [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { urls: 'stun:stun1.l.google.com:19302' }
+                        ]
+                    }
+                };
+
+                // Создаем Peer с ID или без (генерируется автоматически)
+                if (id) {
+                    peer = new Peer(id, peerOptions);
+                } else {
+                    peer = new Peer(peerOptions);
                 }
-                isConnected = true;
-                connectionStatus.textContent = 'Подключено';
                 
-                // Инициализируем медиаустройства
-                initializeMedia();
+                peer.on('open', (id) => {
+                    console.log('Peer подключен с ID:', id);
+                    peerId = id;
+                    connectionStatus.textContent = 'Подключено (ID: ' + id + ')';
+                    connectionStatus.classList.add('success');
+                    
+                    if (!isHost) {
+                        // Ждем немного перед подключением к хосту
+                        setTimeout(() => {
+                            connectToHost();
+                        }, 1000);
+                    }
+                    
+                    // Инициализируем медиаустройства
+                    initializeMedia();
+                });
+                
+                peer.on('connection', (connection) => {
+                    console.log('Входящее соединение от:', connection.peer);
+                    // Хост принимает входящее соединение
+                    conn = connection;
+                    setupConnection();
+                    isConnected = true;
+                });
+                
+                peer.on('error', (err) => {
+                    console.error('Peer error:', err);
+                    connectionStatus.textContent = 'Ошибка: ' + err.type;
+                    connectionStatus.classList.add('error');
+                    
+                    // Повторная инициализация при некоторых ошибках
+                    if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
+                        setTimeout(() => {
+                            if (isHost) {
+                                initializePeer(generateRoomCode());
+                            } else {
+                                initializePeer();
+                            }
+                        }, 2000);
+                    }
+                });
+                
+                // Обработка входящих видеозвонков
+                peer.on('call', (call) => {
+                    console.log('Входящий звонок от:', call.peer);
+                    
+                    // Отвечаем на звонок с нашим видеопотоком
+                    if (localStream) {
+                        call.answer(localStream);
+                        setupCall(call);
+                        
+                        // Уведомляем о входящем звонке
+                        callStatus.textContent = 'Входящий звонок...';
+                        addMessage('Система: Входящий звонок', 'system');
+                    } else {
+                        console.error('Локальный поток не доступен для ответа на звонок');
+                        // Пытаемся получить медиаустройства и ответить
+                        getUserMedia().then(stream => {
+                            call.answer(stream);
+                            setupCall(call);
+                        }).catch(err => {
+                            console.error('Не удалось получить доступ к медиаустройствам:', err);
+                        });
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Ошибка инициализации Peer:', error);
+                connectionStatus.textContent = 'Ошибка инициализации';
+                connectionStatus.classList.add('error');
+            }
+        }
+        
+        // Подключение к хосту (для клиента)
+        function connectToHost() {
+            if (!peer || !peer.id) {
+                console.error('Peer не инициализирован');
+                return;
+            }
+            
+            console.log('Подключаемся к хосту:', currentRoomCode);
+            conn = peer.connect(currentRoomCode, {
+                reliable: true
             });
             
-            peer.on('connection', (connection) => {
-                // Хост принимает входящее соединение
-                conn = connection;
+            conn.on('open', () => {
+                console.log('Соединение с хостом установлено');
+                isConnected = true;
                 setupConnection();
             });
             
-            peer.on('error', (err) => {
-                console.error('Peer error:', err);
-                connectionStatus.textContent = 'Ошибка подключения: ' + err.type;
-            });
-            
-            // Обработка входящих видеозвонков
-            peer.on('call', (call) => {
-                console.log('Входящий звонок от:', call.peer);
+            conn.on('error', (err) => {
+                console.error('Ошибка подключения к хосту:', err);
+                connectionStatus.textContent = 'Ошибка подключения к комнате';
+                connectionStatus.classList.add('error');
                 
-                // Отвечаем на звонок с нашим видеопотоком
-                if (localStream) {
-                    call.answer(localStream);
-                    setupCall(call);
-                    
-                    // Уведомляем о входящем звонке
-                    callStatus.textContent = 'Входящий звонок...';
-                    addMessage('Система: Входящий звонок', 'system');
-                } else {
-                    console.error('Локальный поток не доступен для ответа на звонок');
-                }
+                // Повторная попытка подключения
+                setTimeout(() => {
+                    if (peer && peer.id) {
+                        connectToHost();
+                    }
+                }, 2000);
             });
         }
         
@@ -496,6 +585,7 @@
             }).catch(err => {
                 console.error('Ошибка доступа к медиаустройствам:', err);
                 callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                callStatus.classList.add('error');
             });
         }
         
@@ -503,7 +593,8 @@
         function setupConnection() {
             conn.on('open', () => {
                 console.log('Соединение установлено');
-                connectionStatus.textContent = 'Подключено';
+                connectionStatus.textContent = 'Подключено к собеседнику';
+                connectionStatus.classList.add('success');
                 
                 // Отправляем приветственное сообщение
                 if (isHost) {
@@ -534,19 +625,25 @@
             conn.on('close', () => {
                 console.log('Соединение закрыто');
                 connectionStatus.textContent = 'Соединение разорвано';
+                connectionStatus.classList.add('error');
                 addMessage('Система: Соединение разорвано', 'system');
+                isConnected = false;
             });
             
             conn.on('error', (err) => {
                 console.error('Connection error:', err);
                 connectionStatus.textContent = 'Ошибка соединения';
+                connectionStatus.classList.add('error');
             });
         }
         
         // Получение доступа к медиаустройствам
         function getUserMedia() {
             return navigator.mediaDevices.getUserMedia({ 
-                video: true, 
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                }, 
                 audio: true 
             }).then(stream => {
                 localStream = stream;
@@ -565,10 +662,12 @@
         
         function sendMessage() {
             const message = messageInput.value.trim();
-            if (message && conn) {
+            if (message && conn && isConnected) {
                 conn.send({ type: 'chat', message: message });
                 addMessage(message, 'own');
                 messageInput.value = '';
+            } else if (!isConnected) {
+                addMessage('Система: Нет подключения к собеседнику', 'system');
             }
         }
         
@@ -589,6 +688,7 @@
         function startCall() {
             if (!isConnected || !conn) {
                 callStatus.textContent = 'Ошибка: Нет подключения к собеседнику';
+                callStatus.classList.add('error');
                 return;
             }
             
@@ -605,6 +705,7 @@
             }).catch(err => {
                 console.error('Ошибка доступа к медиаустройствам:', err);
                 callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                callStatus.classList.add('error');
             });
         }
         
@@ -614,6 +715,8 @@
                 console.log('Получен удаленный поток');
                 remoteVideo.srcObject = remoteStream;
                 callStatus.textContent = 'Звонок активен';
+                callStatus.classList.remove('error');
+                callStatus.classList.add('success');
                 startCallBtn.disabled = true;
                 endCallBtn.disabled = false;
                 addMessage('Система: Звонок начат', 'system');
@@ -628,6 +731,7 @@
             call.on('error', (err) => {
                 console.error('Call error:', err);
                 callStatus.textContent = 'Ошибка звонка: ' + err.message;
+                callStatus.classList.add('error');
                 endCall();
             });
             
@@ -651,11 +755,12 @@
             remoteVideo.srcObject = null;
             
             callStatus.textContent = 'Звонок завершен';
+            callStatus.classList.remove('success', 'error');
             startCallBtn.disabled = false;
             endCallBtn.disabled = true;
             
             // Уведомляем другого участника о завершении звонка
-            if (conn) {
+            if (conn && isConnected) {
                 conn.send({ type: 'call_ended', message: 'Звонок завершен' });
             }
             
