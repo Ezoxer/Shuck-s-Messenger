@@ -436,7 +436,7 @@
                         <i class="fas fa-microphone"></i>
                         <span>Микрофон</span>
                     </button>
-                    <button id="shareScreenBtn" class="icon-btn secondary">
+                    <button id="shareScreenBtn" class="icon-btn secondary hidden">
                         <i class="fas fa-desktop"></i>
                         <span>Экран</span>
                     </button>
@@ -506,12 +506,28 @@
         let hasVideoDevice = false;
         let hasAudioDevice = false;
 
-        // Скрываем кнопку демонстрации экрана на мобильных устройствах
-        if (isMobileDevice) {
-            shareScreenBtn.classList.add('hidden');
-        } else {
-            switchCameraBtn.classList.remove('hidden');
+        // Определяем устройство и настраиваем кнопки
+        function setupDeviceSpecificButtons() {
+            if (isMobileDevice) {
+                // На мобильных устройствах скрываем демонстрацию экрана и показываем переключение камеры
+                shareScreenBtn.classList.add('hidden');
+                switchCameraBtn.classList.remove('hidden');
+            } else {
+                // На ПК показываем демонстрацию экрана и скрываем переключение камеры
+                shareScreenBtn.classList.remove('hidden');
+                switchCameraBtn.classList.add('hidden');
+            }
         }
+        
+        // Инициализация при загрузке
+        window.addEventListener('load', function() {
+            console.log('Приложение загружено, устройство:', isMobileDevice ? 'мобильное' : 'ПК');
+            setupDeviceSpecificButtons();
+            
+            if (window.innerHeight > window.innerWidth) {
+                document.body.classList.add('vertical');
+            }
+        });
         
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -560,7 +576,6 @@
         // Инициализация Peer соединения
         function initializePeer(id = null) {
             try {
-                // Улучшенные настройки PeerJS для WebRTC
                 const peerOptions = {
                     debug: 3,
                     config: {
@@ -568,19 +583,12 @@
                             { urls: 'stun:stun.l.google.com:19302' },
                             { urls: 'stun:stun1.l.google.com:19302' },
                             { urls: 'stun:stun2.l.google.com:19302' },
-                            { urls: 'stun:stun3.l.google.com:19302' },
-                            { urls: 'stun:stun4.l.google.com:19302' }
+                            { urls: 'stun:stun3.l.google.com:19302' }
                         ],
-                        'iceCandidatePoolSize': 10,
-                        'bundlePolicy': 'max-bundle',
-                        'rtcpMuxPolicy': 'require'
-                    },
-                    // Добавляем обработку переподключения
-                    reconnectTimer: 2000,
-                    maxRetries: 5
+                        'iceCandidatePoolSize': 10
+                    }
                 };
 
-                // Создаем Peer с ID или без
                 if (id) {
                     peer = new Peer(id, peerOptions);
                 } else {
@@ -613,32 +621,18 @@
                     console.error('Peer error:', err);
                     connectionStatus.textContent = 'Ошибка: ' + err.type;
                     connectionStatus.classList.add('error');
-                    
-                    // Обработка специфических ошибок WebRTC
-                    if (err.type === 'peer-unavailable' || err.type === 'network') {
-                        setTimeout(() => {
-                            if (isHost) {
-                                initializePeer(generateRoomCode());
-                            } else {
-                                initializePeer();
-                            }
-                        }, 3000);
-                    }
                 });
                 
                 // Обработка входящих видеозвонков
                 peer.on('call', (call) => {
                     console.log('Входящий звонок от:', call.peer);
                     
-                    // Проверяем готовность локального потока
                     if (localStream) {
                         call.answer(localStream);
                         setupCall(call);
                         callStatus.textContent = 'Входящий звонок...';
                         addMessage('Система: Входящий звонок', 'system');
                     } else {
-                        // Если поток не готов, пытаемся получить доступ к медиаустройствам
-                        console.log('Локальный поток не готов, запрашиваем доступ...');
                         getUserMedia().then(stream => {
                             call.answer(stream);
                             setupCall(call);
@@ -741,11 +735,6 @@
                     hasVideoDevice = devices.some(device => device.kind === 'videoinput');
                     hasAudioDevice = devices.some(device => device.kind === 'audioinput');
                     
-                    console.log('Доступные устройства:', {
-                        video: hasVideoDevice,
-                        audio: hasAudioDevice
-                    });
-                    
                     const constraints = {};
                     
                     if (hasVideoDevice) {
@@ -762,15 +751,13 @@
                     if (hasAudioDevice) {
                         constraints.audio = {
                             echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
+                            noiseSuppression: true
                         };
                     } else {
                         constraints.audio = false;
                     }
                     
                     if (!hasVideoDevice && !hasAudioDevice) {
-                        console.warn('Нет доступных медиаустройств');
                         localStream = new MediaStream();
                         localVideo.srcObject = localStream;
                         updateMediaButtons();
@@ -782,7 +769,6 @@
                             localStream = stream;
                             localVideo.srcObject = stream;
                             
-                            // Зеркальное отображение для фронтальной камеры
                             if (facingMode === 'user') {
                                 localVideo.classList.add('mirror-mode');
                             } else {
@@ -798,8 +784,6 @@
                         })
                         .catch(err => {
                             console.error('Ошибка getUserMedia:', err);
-                            
-                            // Пробуем получить только аудио
                             if (hasAudioDevice) {
                                 return navigator.mediaDevices.getUserMedia({ 
                                     audio: true, 
@@ -812,7 +796,6 @@
                                     return audioStream;
                                 });
                             }
-                            
                             throw err;
                         });
                 });
@@ -874,7 +857,6 @@
                     localStream = stream;
                     localVideo.srcObject = stream;
                     
-                    // Определяем тип камеры для зеркального отображения
                     const track = stream.getVideoTracks()[0];
                     if (track) {
                         const settings = track.getSettings();
@@ -885,7 +867,6 @@
                         }
                     }
                     
-                    // Обновляем видеопоток в активном звонке
                     if (isCallActive && currentCall) {
                         const videoTrack = stream.getVideoTracks()[0];
                         if (videoTrack) {
@@ -905,11 +886,10 @@
                 });
         }
         
-        // Демонстрация экрана (только для десктопных устройств)
+        // Демонстрация экрана (только для ПК)
         function shareScreen() {
             if (isMobileDevice) {
-                alert('Демонстрация экрана недоступна на мобильных устройствах');
-                return;
+                return; // На мобильных устройствах функция недоступна
             }
             
             if (isScreenSharing) {
@@ -917,52 +897,98 @@
                 return;
             }
             
-            if (!navigator.mediaDevices.getDisplayMedia) {
+            // Проверяем поддержку демонстрации экрана
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
                 alert('Демонстрация экрана не поддерживается в вашем браузере');
                 return;
             }
             
-            navigator.mediaDevices.getDisplayMedia({ 
+            console.log('Запуск демонстрации экрана...');
+            
+            // Запрашиваем доступ к экрану
+            navigator.mediaDevices.getDisplayMedia({
                 video: {
                     cursor: 'always',
                     displaySurface: 'browser'
                 },
-                audio: true 
-            })
-            .then(stream => {
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    sampleRate: 44100
+                }
+            }).then(stream => {
+                console.log('Демонстрация экрана запущена');
                 screenStream = stream;
                 isScreenSharing = true;
                 
+                // Добавляем индикатор демонстрации экрана
                 const indicator = document.createElement('div');
                 indicator.className = 'screen-share-indicator';
                 indicator.textContent = 'Демонстрация экрана';
                 localVideo.parentElement.appendChild(indicator);
                 
+                // Показываем поток экрана в локальном видео
                 localVideo.srcObject = stream;
                 localVideo.classList.remove('mirror-mode');
                 
+                // Если активен звонок, заменяем видеотрак
                 if (isCallActive && currentCall) {
+                    console.log('Обновляем видеопоток в активном звонке');
                     const videoTrack = stream.getVideoTracks()[0];
                     if (videoTrack) {
                         const sender = currentCall.peerConnection.getSenders().find(s => 
                             s.track && s.track.kind === 'video'
                         );
                         if (sender) {
-                            sender.replaceTrack(videoTrack);
+                            sender.replaceTrack(videoTrack).then(() => {
+                                console.log('Видеотрак успешно заменен');
+                            }).catch(err => {
+                                console.error('Ошибка замены видеотрака:', err);
+                            });
+                        }
+                    }
+                    
+                    // Также заменяем аудиотрак если есть
+                    const audioTrack = stream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        const sender = currentCall.peerConnection.getSenders().find(s => 
+                            s.track && s.track.kind === 'audio'
+                        );
+                        if (sender) {
+                            sender.replaceTrack(audioTrack).then(() => {
+                                console.log('Аудиотрак успешно заменен');
+                            }).catch(err => {
+                                console.error('Ошибка замены аудиотрака:', err);
+                            });
                         }
                     }
                 }
                 
+                // Уведомляем собеседника о начале демонстрации экрана
+                if (conn && isConnected) {
+                    conn.send({ type: 'screen_share_started', message: 'Демонстрация экрана начата' });
+                }
+                
                 updateMediaButtons();
                 
-                stream.getVideoTracks()[0].onended = () => {
+                // Обработка завершения демонстрации экрана
+                stream.getVideoTracks()[0].addEventListener('ended', () => {
+                    console.log('Демонстрация экрана завершена пользователем');
                     stopScreenShare();
-                };
-            })
-            .catch(err => {
+                });
+                
+            }).catch(err => {
                 console.error('Ошибка демонстрации экрана:', err);
                 isScreenSharing = false;
                 updateMediaButtons();
+                
+                if (err.name === 'NotAllowedError') {
+                    alert('Доступ к демонстрации экрана запрещен. Разрешите доступ в настройках браузера.');
+                } else if (err.name === 'NotFoundError') {
+                    alert('Не удалось найти источник для демонстрации экрана.');
+                } else {
+                    alert('Произошла ошибка при демонстрации экрана: ' + err.message);
+                }
             });
         }
         
@@ -970,19 +996,25 @@
         function stopScreenShare() {
             if (!isScreenSharing) return;
             
+            console.log('Остановка демонстрации экрана...');
+            
+            // Останавливаем поток экрана
             if (screenStream) {
                 screenStream.getTracks().forEach(track => track.stop());
                 screenStream = null;
             }
             
+            // Убираем индикатор
             const indicator = localVideo.parentElement.querySelector('.screen-share-indicator');
             if (indicator) {
                 indicator.remove();
             }
             
+            // Возвращаем камеру
             if (localStream) {
                 localVideo.srcObject = localStream;
                 
+                // Восстанавливаем зеркальное отображение для фронтальной камеры
                 const track = localStream.getVideoTracks()[0];
                 if (track) {
                     const settings = track.getSettings();
@@ -991,21 +1023,49 @@
                     }
                 }
                 
+                // Если активен звонок, возвращаем видеотрак камеры
                 if (isCallActive && currentCall) {
+                    console.log('Возвращаем видеопоток камеры в активном звонке');
                     const videoTrack = localStream.getVideoTracks()[0];
                     if (videoTrack) {
                         const sender = currentCall.peerConnection.getSenders().find(s => 
                             s.track && s.track.kind === 'video'
                         );
                         if (sender) {
-                            sender.replaceTrack(videoTrack);
+                            sender.replaceTrack(videoTrack).then(() => {
+                                console.log('Видеотрак камеры успешно восстановлен');
+                            }).catch(err => {
+                                console.error('Ошибка восстановления видеотрака:', err);
+                            });
+                        }
+                    }
+                    
+                    // Возвращаем аудиотрак микрофона
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        const sender = currentCall.peerConnection.getSenders().find(s => 
+                            s.track && s.track.kind === 'audio'
+                        );
+                        if (sender) {
+                            sender.replaceTrack(audioTrack).then(() => {
+                                console.log('Аудиотрак микрофона успешно восстановлен');
+                            }).catch(err => {
+                                console.error('Ошибка восстановления аудиотрака:', err);
+                            });
                         }
                     }
                 }
             }
             
             isScreenSharing = false;
+            
+            // Уведомляем собеседника о завершении демонстрации экрана
+            if (conn && isConnected) {
+                conn.send({ type: 'screen_share_ended', message: 'Демонстрация экрана завершена' });
+            }
+            
             updateMediaButtons();
+            console.log('Демонстрация экрана остановлена');
         }
         
         // Отправка сообщения
@@ -1053,7 +1113,6 @@
             // Уведомляем собеседника о звонке
             conn.send({ type: 'call_request', message: 'Входящий звонок' });
             
-            // Убеждаемся что локальный поток готов
             if (!localStream) {
                 getUserMedia().then(stream => {
                     makeCall(stream);
@@ -1134,6 +1193,7 @@
                 remoteVideo.srcObject = null;
             }
             
+            // Останавливаем демонстрацию экрана если активна
             if (isScreenSharing) {
                 stopScreenShare();
             }
@@ -1201,14 +1261,18 @@
                 toggleAudioBtn.classList.add('error');
             }
             
-            if (isScreenSharing) {
-                shareScreenBtn.innerHTML = '<i class="fas fa-stop"></i><span>Экран</span>';
-                shareScreenBtn.classList.add('error');
-            } else {
-                shareScreenBtn.innerHTML = '<i class="fas fa-desktop"></i><span>Экран</span>';
-                shareScreenBtn.classList.remove('error');
+            // Обновляем кнопку демонстрации экрана (только для ПК)
+            if (!isMobileDevice) {
+                if (isScreenSharing) {
+                    shareScreenBtn.innerHTML = '<i class="fas fa-stop"></i><span>Экран</span>';
+                    shareScreenBtn.classList.add('error');
+                } else {
+                    shareScreenBtn.innerHTML = '<i class="fas fa-desktop"></i><span>Экран</span>';
+                    shareScreenBtn.classList.remove('error');
+                }
             }
             
+            // Обновляем кнопку переключения камеры (только для мобильных)
             if (isMobileDevice && availableCameras.length > 1) {
                 switchCameraBtn.classList.remove('hidden');
             } else {
@@ -1231,15 +1295,6 @@
                 document.body.classList.add('vertical');
             } else {
                 document.body.classList.remove('vertical');
-            }
-        });
-        
-        // Инициализация при загрузке
-        window.addEventListener('load', function() {
-            console.log('Приложение загружено');
-            
-            if (window.innerHeight > window.innerWidth) {
-                document.body.classList.add('vertical');
             }
         });
     </script>
