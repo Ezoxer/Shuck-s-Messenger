@@ -602,6 +602,7 @@
         let availableCameras = [];
         let currentCameraIndex = 0;
         let isFrontCamera = true;
+        let audioTrack = null; // Сохраняем аудио дорожку отдельно
 
         // Генерация случайного кода комнаты
         function generateRoomCode() {
@@ -779,7 +780,6 @@
                     availableCameras = devices.filter(device => device.kind === 'videoinput');
                     console.log('Доступные камеры:', availableCameras);
                     
-                    // Показываем кнопку переключения камеры только если есть более одной камеры
                     if (availableCameras.length > 1) {
                         switchCameraBtn.classList.remove('hidden');
                     } else {
@@ -810,8 +810,20 @@
             
             return navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
+                    // Сохраняем аудио дорожку если она уже есть
+                    if (audioTrack && localStream) {
+                        // Останавливаем только видео дорожки из старого потока
+                        localStream.getVideoTracks().forEach(track => track.stop());
+                        
+                        // Добавляем сохраненную аудио дорожку в новый поток
+                        stream.addTrack(audioTrack);
+                    }
+                    
                     localStream = stream;
                     localVideo.srcObject = stream;
+                    
+                    // Сохраняем аудио дорожку для будущего использования
+                    audioTrack = stream.getAudioTracks()[0];
                     
                     // Применяем зеркальное отображение для фронтальной камеры
                     if (isFrontCamera) {
@@ -839,9 +851,12 @@
             isFrontCamera = !isFrontCamera;
             console.log('Переключение камеры. Фронтальная:', isFrontCamera);
             
-            // Останавливаем текущий поток
+            // Сохраняем текущее состояние аудио
+            const wasAudioEnabled = isAudioEnabled;
+            
+            // Останавливаем только видео дорожки
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                localStream.getVideoTracks().forEach(track => track.stop());
             }
             
             // Получаем новый поток с другой камерой
@@ -849,7 +864,12 @@
                 localStream = stream;
                 localVideo.srcObject = stream;
                 
-                // Если активен звонок, заменяем видеотрак
+                // Восстанавливаем состояние аудио
+                if (audioTrack) {
+                    audioTrack.enabled = wasAudioEnabled;
+                }
+                
+                // Если активен звонок, заменяем только видеотрак
                 if (isCallActive && currentCall) {
                     const videoTrack = stream.getVideoTracks()[0];
                     if (videoTrack) {
@@ -860,13 +880,14 @@
                             sender.replaceTrack(videoTrack);
                         }
                     }
+                    
+                    // Аудио дорожка остается той же, поэтому не нужно заменять
                 }
                 
                 updateMediaButtons();
             })
             .catch(err => {
                 console.error('Ошибка переключения камеры:', err);
-                // Возвращаем предыдущее состояние в случае ошибки
                 isFrontCamera = !isFrontCamera;
             });
         }
@@ -1218,7 +1239,6 @@
         
         // Обработка изменения ориентации экрана
         window.addEventListener('resize', function() {
-            // Принудительное обновление layout при изменении размера
             setTimeout(updateMediaButtons, 100);
         });
     </script>
