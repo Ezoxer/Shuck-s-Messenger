@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Suck's Messenger</title>
     <style>
-        /* Стили остаются без изменений */
         * {
             margin: 0;
             padding: 0;
@@ -207,7 +206,6 @@
             background: rgba(255, 255, 255, 0.1);
             border-radius: 15px;
             padding: 20px;
-            text-align: center;
         }
         
         .video-container {
@@ -234,6 +232,11 @@
             object-fit: cover;
         }
         
+        /* Зеркальное отображение для фронтальной камеры */
+        .mirror-mode {
+            transform: scaleX(-1);
+        }
+        
         .video-label {
             position: absolute;
             bottom: 10px;
@@ -242,6 +245,7 @@
             padding: 5px 10px;
             border-radius: 5px;
             font-size: 0.8rem;
+            z-index: 10;
         }
         
         .call-controls {
@@ -256,6 +260,7 @@
             justify-content: center;
             gap: 10px;
             margin-top: 15px;
+            flex-wrap: wrap;
         }
         
         .status {
@@ -275,6 +280,8 @@
             align-items: center;
             gap: 5px;
             font-size: 0.8rem;
+            padding: 8px 12px;
+            min-width: 60px;
         }
         
         .icon-btn i {
@@ -302,6 +309,163 @@
             border-radius: 5px;
             font-size: 0.7rem;
             z-index: 10;
+        }
+        
+        /* Мобильные стили */
+        @media (max-width: 768px) {
+            .container {
+                max-width: 100%;
+                margin: 10px;
+                border-radius: 15px;
+            }
+            
+            .content {
+                padding: 15px;
+                gap: 15px;
+            }
+            
+            .video-container {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .video-box {
+                aspect-ratio: 16/9;
+            }
+            
+            .media-controls {
+                gap: 8px;
+            }
+            
+            .icon-btn {
+                padding: 6px 8px;
+                min-width: 55px;
+                font-size: 0.7rem;
+            }
+            
+            .icon-btn i {
+                font-size: 1rem;
+            }
+            
+            .call-controls {
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+            
+            .call-controls button {
+                padding: 10px 15px;
+                font-size: 0.9rem;
+                flex: 1;
+                min-width: 120px;
+            }
+            
+            .buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .buttons button {
+                width: 100%;
+                max-width: 250px;
+            }
+            
+            .chat-section {
+                height: 300px;
+            }
+            
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .header p {
+                font-size: 0.9rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .media-controls {
+                gap: 5px;
+            }
+            
+            .icon-btn {
+                padding: 5px 6px;
+                min-width: 50px;
+                font-size: 0.65rem;
+            }
+            
+            .icon-btn i {
+                font-size: 0.9rem;
+            }
+            
+            .call-controls button {
+                padding: 8px 12px;
+                font-size: 0.8rem;
+                min-width: 110px;
+            }
+            
+            .code-display {
+                font-size: 1.5rem;
+                padding: 10px;
+            }
+            
+            .setup-section h2 {
+                font-size: 1.2rem;
+            }
+        }
+
+        /* Дополнительные стили для очень маленьких экранов */
+        @media (max-width: 360px) {
+            .media-controls {
+                gap: 3px;
+            }
+            
+            .icon-btn {
+                padding: 4px 5px;
+                min-width: 45px;
+                font-size: 0.6rem;
+            }
+            
+            .icon-btn i {
+                font-size: 0.8rem;
+            }
+            
+            .call-controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .call-controls button {
+                width: 100%;
+                max-width: 200px;
+            }
+            
+            body {
+                padding: 10px;
+            }
+            
+            .content {
+                padding: 10px;
+            }
+        }
+        
+        /* Стили для горизонтальной ориентации на мобильных */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .container {
+                max-height: 90vh;
+                overflow-y: auto;
+            }
+            
+            .chat-section {
+                height: 200px;
+            }
+            
+            .video-container {
+                flex-direction: row;
+            }
+            
+            .video-box {
+                aspect-ratio: 4/3;
+            }
         }
     </style>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -375,7 +539,7 @@
                         <i class="fas fa-desktop"></i>
                         <span>Экран</span>
                     </button>
-                    <button id="switchCameraBtn" class="icon-btn secondary hidden">
+                    <button id="switchCameraBtn" class="icon-btn secondary">
                         <i class="fas fa-camera-rotate"></i>
                         <span>Камера</span>
                     </button>
@@ -435,15 +599,10 @@
         let isScreenSharing = false;
         let screenStream = null;
         let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        let currentFacingMode = 'user'; // 'user' - фронтальная, 'environment' - задняя
         let availableCameras = [];
         let currentCameraIndex = 0;
+        let isFrontCamera = true;
 
-        // Показываем кнопку переключения камеры только на мобильных устройствах
-        if (isMobileDevice) {
-            switchCameraBtn.classList.remove('hidden');
-        }
-        
         // Генерация случайного кода комнаты
         function generateRoomCode() {
             return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -491,7 +650,6 @@
         // Инициализация Peer соединения
         function initializePeer(id = null) {
             try {
-                // Используем более надежные настройки PeerJS
                 const peerOptions = {
                     debug: 3,
                     config: {
@@ -502,7 +660,6 @@
                     }
                 };
 
-                // Создаем Peer с ID или без (генерируется автоматически)
                 if (id) {
                     peer = new Peer(id, peerOptions);
                 } else {
@@ -516,19 +673,16 @@
                     connectionStatus.classList.add('success');
                     
                     if (!isHost) {
-                        // Ждем немного перед подключением к хосту
                         setTimeout(() => {
                             connectToHost();
                         }, 1000);
                     }
                     
-                    // Инициализируем медиаустройства
                     initializeMedia();
                 });
                 
                 peer.on('connection', (connection) => {
                     console.log('Входящее соединение от:', connection.peer);
-                    // Хост принимает входящее соединение
                     conn = connection;
                     setupConnection();
                     isConnected = true;
@@ -539,7 +693,6 @@
                     connectionStatus.textContent = 'Ошибка: ' + err.type;
                     connectionStatus.classList.add('error');
                     
-                    // Повторная инициализация при некоторых ошибках
                     if (err.type === 'unavailable-id' || err.type === 'peer-unavailable') {
                         setTimeout(() => {
                             if (isHost) {
@@ -551,21 +704,16 @@
                     }
                 });
                 
-                // Обработка входящих видеозвонков
                 peer.on('call', (call) => {
                     console.log('Входящий звонок от:', call.peer);
                     
-                    // Отвечаем на звонок с нашим видеопотоком
                     if (localStream) {
                         call.answer(localStream);
                         setupCall(call);
                         
-                        // Уведомляем о входящем звонке
                         callStatus.textContent = 'Входящий звонок...';
                         addMessage('Система: Входящий звонок', 'system');
                     } else {
-                        console.error('Локальный поток не доступен для ответа на звонок');
-                        // Пытаемся получить медиаустройства и ответить
                         getUserMedia().then(stream => {
                             call.answer(stream);
                             setupCall(call);
@@ -605,7 +753,6 @@
                 connectionStatus.textContent = 'Ошибка подключения к комнате';
                 connectionStatus.classList.add('error');
                 
-                // Повторная попытка подключения
                 setTimeout(() => {
                     if (peer && peer.id) {
                         connectToHost();
@@ -625,80 +772,103 @@
             });
         }
         
-        // Получение доступа к медиаустройствам с возможностью выбора камеры
-        function getUserMedia(facingMode = 'user') {
-            const constraints = {
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: facingMode
-                }, 
-                audio: true 
-            };
-            
-            return navigator.mediaDevices.getUserMedia(constraints)
-                .then(stream => {
-                    localStream = stream;
-                    localVideo.srcObject = stream;
-                    return stream;
-                });
-        }
-        
         // Получение списка доступных камер
         function getAvailableCameras() {
             return navigator.mediaDevices.enumerateDevices()
                 .then(devices => {
                     availableCameras = devices.filter(device => device.kind === 'videoinput');
-                    console.log('Доступные камеры:', availableCameras.length);
+                    console.log('Доступные камеры:', availableCameras);
+                    
+                    // Показываем кнопку переключения камеры только если есть более одной камеры
+                    if (availableCameras.length > 1) {
+                        switchCameraBtn.classList.remove('hidden');
+                    } else {
+                        switchCameraBtn.classList.add('hidden');
+                    }
+                    
                     return availableCameras;
+                })
+                .catch(err => {
+                    console.error('Ошибка получения списка камер:', err);
+                    switchCameraBtn.classList.add('hidden');
+                    return [];
+                });
+        }
+        
+        // Получение доступа к медиаустройствам
+        function getUserMedia(constraints = null) {
+            if (!constraints) {
+                constraints = {
+                    video: {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: isFrontCamera ? 'user' : 'environment'
+                    }, 
+                    audio: true 
+                };
+            }
+            
+            return navigator.mediaDevices.getUserMedia(constraints)
+                .then(stream => {
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    
+                    // Применяем зеркальное отображение для фронтальной камеры
+                    if (isFrontCamera) {
+                        localVideo.classList.add('mirror-mode');
+                    } else {
+                        localVideo.classList.remove('mirror-mode');
+                    }
+                    
+                    return stream;
                 });
         }
         
         // Переключение между камерами
         function switchCamera() {
-            if (!isMobileDevice || availableCameras.length < 2) return;
+            if (availableCameras.length < 2) {
+                console.log('Доступна только одна камера');
+                return;
+            }
             
-            currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
-            const deviceId = availableCameras[currentCameraIndex].deviceId;
+            if (isScreenSharing) {
+                alert('Сначала остановите демонстрацию экрана');
+                return;
+            }
             
-            const constraints = {
-                video: {
-                    deviceId: { exact: deviceId },
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: true
-            };
+            isFrontCamera = !isFrontCamera;
+            console.log('Переключение камеры. Фронтальная:', isFrontCamera);
             
             // Останавливаем текущий поток
             if (localStream) {
                 localStream.getTracks().forEach(track => track.stop());
             }
             
-            // Получаем новый поток с выбранной камерой
-            navigator.mediaDevices.getUserMedia(constraints)
-                .then(stream => {
-                    localStream = stream;
-                    localVideo.srcObject = stream;
-                    
-                    // Если активен звонок, заменяем видеотрак
-                    if (isCallActive && currentCall) {
-                        const videoTrack = stream.getVideoTracks()[0];
-                        if (videoTrack) {
-                            const sender = currentCall.peerConnection.getSenders().find(s => 
-                                s.track && s.track.kind === 'video'
-                            );
-                            if (sender) {
-                                sender.replaceTrack(videoTrack);
-                            }
+            // Получаем новый поток с другой камерой
+            getUserMedia().then(stream => {
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // Если активен звонок, заменяем видеотрак
+                if (isCallActive && currentCall) {
+                    const videoTrack = stream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        const sender = currentCall.peerConnection.getSenders().find(s => 
+                            s.track && s.track.kind === 'video'
+                        );
+                        if (sender) {
+                            sender.replaceTrack(videoTrack);
                         }
                     }
-                    
-                    updateMediaButtons();
-                })
-                .catch(err => {
-                    console.error('Ошибка переключения камеры:', err);
-                });
+                }
+                
+                updateMediaButtons();
+            })
+            .catch(err => {
+                console.error('Ошибка переключения камеры:', err);
+                // Возвращаем предыдущее состояние в случае ошибки
+                isFrontCamera = !isFrontCamera;
+            });
         }
         
         // Демонстрация экрана
@@ -727,6 +897,9 @@
                 indicator.textContent = 'Демонстрация экрана';
                 localVideo.parentElement.appendChild(indicator);
                 
+                // Убираем зеркальное отображение при демонстрации экрана
+                localVideo.classList.remove('mirror-mode');
+                
                 // Показываем поток экрана в локальном видео
                 localVideo.srcObject = stream;
                 
@@ -743,7 +916,6 @@
                     }
                 }
                 
-                // Обновляем кнопку
                 updateMediaButtons();
                 
                 // Обработка завершения демонстрации экрана
@@ -762,7 +934,6 @@
         function stopScreenShare() {
             if (!isScreenSharing) return;
             
-            // Останавливаем поток экрана
             if (screenStream) {
                 screenStream.getTracks().forEach(track => track.stop());
                 screenStream = null;
@@ -777,6 +948,11 @@
             // Возвращаем камеру
             if (localStream) {
                 localVideo.srcObject = localStream;
+                
+                // Восстанавливаем зеркальное отображение для фронтальной камеры
+                if (isFrontCamera) {
+                    localVideo.classList.add('mirror-mode');
+                }
                 
                 // Если активен звонок, возвращаем видеотрак камеры
                 if (isCallActive && currentCall) {
@@ -803,12 +979,10 @@
                 connectionStatus.textContent = 'Подключено к собеседнику';
                 connectionStatus.classList.add('success');
                 
-                // Отправляем приветственное сообщение
                 if (isHost) {
                     addMessage('Система: Вы создали комнату. Ожидание участников...', 'system');
                 } else {
                     addMessage('Система: Вы присоединились к комнате', 'system');
-                    // Уведомляем хост о подключении
                     conn.send({ type: 'user_joined', message: 'Пользователь присоединился' });
                 }
             });
@@ -824,12 +998,7 @@
                     endCall();
                     addMessage('Система: Собеседник завершил звонок', 'system');
                 } else if (data.type === 'call_request') {
-                    // Уведомление о запросе звонка
                     addMessage('Система: Собеседник звонит вам', 'system');
-                } else if (data.type === 'screen_share_started') {
-                    addMessage('Система: Собеседник начал демонстрацию экрана', 'system');
-                } else if (data.type === 'screen_share_ended') {
-                    addMessage('Система: Собеседник завершил демонстрацию экрана', 'system');
                 }
             });
             
@@ -890,12 +1059,9 @@
             
             callStatus.textContent = 'Установка соединения...';
             
-            // Уведомляем собеседника о звонке
             conn.send({ type: 'call_request', message: 'Входящий звонок' });
             
-            // Получаем доступ к камере и микрофону
             getUserMedia().then(stream => {
-                // Звоним другому участнику
                 currentCall = peer.call(currentRoomCode, stream);
                 setupCall(currentCall);
             }).catch(err => {
@@ -921,7 +1087,6 @@
             
             call.on('close', () => {
                 console.log('Звонок завершен');
-                // Проверяем, не был ли звонок уже завершен
                 if (isCallActive) {
                     endCall();
                     addMessage('Система: Звонок завершен', 'system');
@@ -942,14 +1107,12 @@
         
         // Завершить видеозвонок
         endCallBtn.addEventListener('click', () => {
-            // Добавляем защиту от множественных нажатий
             if (isCallActive) {
                 endCall();
             }
         });
         
         function endCall() {
-            // Проверяем, не был ли звонок уже завершен
             if (!isCallActive) return;
             
             console.log('Завершение звонка...');
@@ -960,7 +1123,6 @@
                 currentCall = null;
             }
             
-            // Останавливаем только удаленный поток, локальный оставляем для возможного следующего звонка
             remoteVideo.srcObject = null;
             
             callStatus.textContent = 'Звонок завершен';
@@ -968,17 +1130,14 @@
             startCallBtn.disabled = false;
             endCallBtn.disabled = true;
             
-            // Уведомляем другого участника о завершении звонка
             if (conn && isConnected) {
                 conn.send({ type: 'call_ended', message: 'Звонок завершен' });
             }
             
-            // Останавливаем демонстрацию экрана если активна
             if (isScreenSharing) {
                 stopScreenShare();
             }
             
-            // Обновляем иконки кнопок управления медиа
             updateMediaButtons();
         }
         
@@ -1017,6 +1176,7 @@
             const videoIcon = toggleVideoBtn.querySelector('i');
             const audioIcon = toggleAudioBtn.querySelector('i');
             const screenIcon = shareScreenBtn.querySelector('i');
+            const cameraIcon = switchCameraBtn.querySelector('i');
             
             if (isVideoEnabled) {
                 videoIcon.className = 'fas fa-video';
@@ -1041,6 +1201,13 @@
                 screenIcon.className = 'fas fa-desktop';
                 shareScreenBtn.classList.add('secondary');
             }
+            
+            // Обновляем иконку переключения камеры
+            if (isFrontCamera) {
+                cameraIcon.className = 'fas fa-camera';
+            } else {
+                cameraIcon.className = 'fas fa-camera-rotate';
+            }
         }
         
         // Инициализация кнопок управления медиа
@@ -1048,6 +1215,12 @@
         
         // Получаем список доступных камер при загрузке
         getAvailableCameras();
+        
+        // Обработка изменения ориентации экрана
+        window.addEventListener('resize', function() {
+            // Принудительное обновление layout при изменении размера
+            setTimeout(updateMediaButtons, 100);
+        });
     </script>
 </body>
 </html>
