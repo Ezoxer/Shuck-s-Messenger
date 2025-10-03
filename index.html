@@ -511,7 +511,6 @@
         let availableCameras = [];
         let myUserName = 'Вы';
         let isCallActive = false;
-        let isEndingCall = false; // Флаг для предотвращения спама
         
         // Хранилище подключений и звонков
         const connections = new Map();
@@ -1012,9 +1011,7 @@
                     break;
                     
                 case 'end_all_calls':
-                    if (!isEndingCall) {
-                        endAllCalls();
-                    }
+                    endAllCalls();
                     break;
             }
         }
@@ -1151,14 +1148,12 @@
             
             // Отправляем запрос на звонок всем подключенным пользователям
             connections.forEach((conn, peerId) => {
-                if (peerId !== myPeerId) { // Не отправляем себе
-                    conn.send({ type: 'call_request' });
-                }
+                conn.send({ type: 'call_request' });
             });
             
-            // Звоним всем подключенным пользователям (кроме себя)
+            // Звоним всем подключенным пользователям
             connections.forEach((conn, peerId) => {
-                if (!calls.has(peerId) && peerId !== myPeerId) {
+                if (!calls.has(peerId)) {
                     startCallWithPeer(peerId);
                 }
             });
@@ -1307,7 +1302,6 @@
                 callStatus.textContent = 'Звонок завершен';
                 callStatus.classList.remove('success');
                 callStatus.classList.remove('listen-only');
-                callStatus.classList.remove('error');
                 startCallBtn.disabled = false;
                 startCallBtn.classList.remove('listen-only');
                 
@@ -1333,15 +1327,9 @@
         endCallBtn.addEventListener('click', endAllCalls);
         
         function endAllCalls() {
-            if (isEndingCall) return; // Предотвращаем повторные вызовы
-            
-            isEndingCall = true;
-            
-            // Отправляем команду завершения всем участникам (кроме себя)
+            // Отправляем команду завершения всем участникам
             connections.forEach((conn, peerId) => {
-                if (peerId !== myPeerId) {
-                    conn.send({ type: 'end_all_calls' });
-                }
+                conn.send({ type: 'end_all_calls' });
             });
             
             // Локально завершаем все звонки
@@ -1353,7 +1341,7 @@
             // Останавливаем все треки в удаленных видео
             const videoElements = videoGrid.querySelectorAll('.video-box');
             videoElements.forEach(videoBox => {
-                if (!videoBox.querySelector('#localVideo')) {
+                if (!videoBox.querySelector('#localVideo') && !videoBox.querySelector('.no-video')) {
                     const videos = videoBox.querySelectorAll('video');
                     videos.forEach(video => {
                         if (video.srcObject) {
@@ -1368,11 +1356,6 @@
             updateCallStatus();
             addMessage('Система: Групповой звонок завершен', 'system');
             debugInfo.textContent = 'Все звонки завершены';
-            
-            // Сбрасываем флаг через небольшую задержку
-            setTimeout(() => {
-                isEndingCall = false;
-            }, 1000);
         }
         
         // Переключение видео
