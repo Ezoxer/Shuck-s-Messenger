@@ -592,6 +592,7 @@
         let peerId = null;
         let isCallActive = false;
         let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        let isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         let currentFacingMode = 'user';
         let availableCameras = [];
         let currentCameraIndex = 0;
@@ -824,12 +825,17 @@
                     const constraints = {};
                     
                     if (hasVideoDevice) {
+                        // Упрощенные constraints для лучшей совместимости с iOS
                         constraints.video = {
                             width: { ideal: 640 },
                             height: { ideal: 480 },
-                            frameRate: { ideal: 30 },
-                            facingMode: facingMode
+                            frameRate: { ideal: 30 }
                         };
+                        
+                        // Добавляем facingMode только если не iOS (для iOS используем deviceId)
+                        if (!isIOS) {
+                            constraints.video.facingMode = facingMode;
+                        }
                     } else {
                         constraints.video = false;
                     }
@@ -837,7 +843,8 @@
                     if (hasAudioDevice) {
                         constraints.audio = {
                             echoCancellation: true,
-                            noiseSuppression: true
+                            noiseSuppression: true,
+                            autoGainControl: true
                         };
                     } else {
                         constraints.audio = false;
@@ -855,6 +862,7 @@
                             localStream = stream;
                             localVideo.srcObject = stream;
                             
+                            // Зеркальное отображение для фронтальной камеры
                             if (facingMode === 'user') {
                                 localVideo.classList.add('mirror-mode');
                             } else {
@@ -914,6 +922,17 @@
                 .then(devices => {
                     availableCameras = devices.filter(device => device.kind === 'videoinput');
                     console.log('Доступные камеры:', availableCameras.length);
+                    
+                    // Для iOS: определяем фронтальные и задние камеры
+                    if (isIOS && availableCameras.length > 0) {
+                        // На iOS обычно 2 камеры - фронтальная и задняя
+                        // Сортируем их для удобства переключения
+                        availableCameras.sort((a, b) => {
+                            // Предполагаем что первая камера - фронтальная
+                            return a.deviceId.localeCompare(b.deviceId);
+                        });
+                    }
+                    
                     return availableCameras;
                 });
         }
@@ -925,50 +944,115 @@
             currentCameraIndex = (currentCameraIndex + 1) % availableCameras.length;
             const deviceId = availableCameras[currentCameraIndex].deviceId;
             
+            console.log('Переключение на камеру:', deviceId, 'Индекс:', currentCameraIndex);
+            
+            // Сохраняем текущее состояние аудио и видео
+            const wasVideoEnabled = isVideoEnabled;
+            const wasAudioEnabled = isAudioEnabled;
+            
             const constraints = {
                 video: {
                     deviceId: { exact: deviceId },
                     width: { ideal: 640 },
-                    height: { ideal: 480 }
+                    height: { ideal: 480 },
+                    frameRate: { ideal: 30 }
                 },
-                audio: true
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
             };
             
+            // Останавливаем только видеотреки, сохраняя аудио
             if (localStream) {
-                localStream.getTracks().forEach(track => track.stop());
+                const videoTracks = localStream.getVideoTracks();
+                videoTracks.forEach(track => track.stop());
             }
             
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
-                    localStream = stream;
-                    localVideo.srcObject = stream;
+                    // Сохраняем аудиотреки из старого потока
+                    const oldAudioTracks = localStream ? localStream.getAudioTracks() : [];
                     
-                    const track = stream.getVideoTracks()[0];
+                    // Создаем новый поток с новым видео и старым аудио
+                    const newStream = new MediaStream();
+                    
+                    // Добавляем новые видеотреки
+                    const newVideoTracks = stream.getVideoTracks();
+                    newVideoTracks.forEach(track => {
+                        newStream.addTrack(track);
+                        // Восстанавливаем состояние видео
+                        track.enabled = wasVideoEnabled;
+                    });
+                    
+                    // Добавляем старые аудиотреки (если они есть)
+                    if (oldAudioTracks.length > 0) {
+                        oldAudioTracks.forEach(track => {
+                            newStream.addTrack(track);
+                            // Восстанавливаем состояние аудио
+                            track.enabled = wasAudioEnabled;
+                        });
+                    } else {
+                        // Если старых аудиотреков нет, добавляем новые
+                        const newAudioTracks = stream.getAudioTracks();
+                        newAudioTracks.forEach(track => {
+                            newStream.addTrack(track);
+                            track.enabled = wasAudioEnabled;
+                        });
+                    }
+                    
+                    localStream = newStream;
+                    localVideo.srcObject = localStream;
+                    
+                    // Определяем тип камеры для зеркального отображения
+                    const track = newStream.getVideoTracks()[0];
                     if (track) {
-                        const settings = track.getSettings();
-                        if (settings.facingMode === 'user') {
-                            localVideo.classList.add('mirror-mode');
+                        // Для iOS используем эвристику: первая камера - фронтальная
+                        if (isIOS) {
+                            if (currentCameraIndex === 0) {
+                                localVideo.classList.add('mirror-mode');
+                                currentFacingMode = 'user';
+                            } else {
+                                localVideo.classList.remove('mirror-mode');
+                                currentFacingMode = 'environment';
+                            }
                         } else {
-                            localVideo.classList.remove('mirror-mode');
+                            // Для Android определяем через facingMode
+                            const settings = track.getSettings();
+                            if (settings.facingMode === 'user') {
+                                localVideo.classList.add('mirror-mode');
+                                currentFacingMode = 'user';
+                            } else {
+                                localVideo.classList.remove('mirror-mode');
+                                currentFacingMode = 'environment';
+                            }
                         }
                     }
                     
+                    // Если активен звонок, заменяем видеотрак
                     if (isCallActive && currentCall) {
-                        const videoTrack = stream.getVideoTracks()[0];
+                        const videoTrack = newStream.getVideoTracks()[0];
                         if (videoTrack) {
                             const sender = currentCall.peerConnection.getSenders().find(s => 
                                 s.track && s.track.kind === 'video'
                             );
                             if (sender) {
-                                sender.replaceTrack(videoTrack);
+                                sender.replaceTrack(videoTrack).then(() => {
+                                    console.log('Видеотрак успешно заменен при переключении камеры');
+                                }).catch(err => {
+                                    console.error('Ошибка замены видеотрака:', err);
+                                });
                             }
                         }
                     }
                     
                     updateMediaButtons();
+                    console.log('Камера успешно переключена');
                 })
                 .catch(err => {
                     console.error('Ошибка переключения камеры:', err);
+                    alert('Не удалось переключить камеру. Пожалуйста, проверьте разрешения.');
                 });
         }
         
@@ -1173,7 +1257,12 @@
         
         // Получаем список камер при загрузке
         if (isMobileDevice) {
-            getAvailableCameras();
+            getAvailableCameras().then(cameras => {
+                console.log('Доступные камеры загружены:', cameras.length);
+                if (cameras.length < 2) {
+                    switchCameraBtn.classList.add('hidden');
+                }
+            });
         }
     </script>
 </body>
