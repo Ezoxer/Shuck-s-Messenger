@@ -239,6 +239,59 @@
             text-align: center;
         }
         
+        .incoming-call-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .incoming-call-content {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 300px;
+            width: 90%;
+        }
+        
+        .incoming-call-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        
+        .accept-call-btn {
+            background: #00c853;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .decline-call-btn {
+            background: #ff3d00;
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 50px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
         .video-container {
             display: flex;
             gap: 20px;
@@ -471,6 +524,22 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
+    <!-- Оверлей для входящего звонка -->
+    <div class="incoming-call-overlay" id="incomingCallOverlay">
+        <div class="incoming-call-content">
+            <h2>Входящий звонок</h2>
+            <p>Собеседник звонит вам</p>
+            <div class="incoming-call-buttons">
+                <button class="accept-call-btn" id="acceptCallBtn">
+                    <i class="fas fa-phone"></i>
+                </button>
+                <button class="decline-call-btn" id="declineCallBtn">
+                    <i class="fas fa-phone-slash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div class="container">
         <div class="header">
             <h1>Suck's Messenger</h1>
@@ -545,6 +614,27 @@
         </div>
     </div>
 
+    <!-- Аудио элементы для звуков -->
+    <audio id="ringtoneSound" preload="auto" loop>
+        <!-- Звонок телефона -->
+        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
+    </audio>
+    
+    <audio id="buttonClickSound" preload="auto">
+        <!-- Клик кнопки -->
+        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
+    </audio>
+    
+    <audio id="callStartSound" preload="auto">
+        <!-- Начало звонка -->
+        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
+    </audio>
+    
+    <audio id="callEndSound" preload="auto">
+        <!-- Конец звонка -->
+        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
+    </audio>
+
     <!-- Подключаем PeerJS библиотеку -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     
@@ -555,6 +645,9 @@
         const joinRoomSection = document.getElementById('joinRoomSection');
         const chatSection = document.getElementById('chatSection');
         const callSection = document.getElementById('callSection');
+        const incomingCallOverlay = document.getElementById('incomingCallOverlay');
+        const acceptCallBtn = document.getElementById('acceptCallBtn');
+        const declineCallBtn = document.getElementById('declineCallBtn');
         
         const createRoomBtn = document.getElementById('createRoomBtn');
         const joinRoomBtn = document.getElementById('joinRoomBtn');
@@ -578,6 +671,12 @@
         const switchCameraBtn = document.getElementById('switchCameraBtn');
         const callStatus = document.getElementById('callStatus');
         
+        // Аудио элементы
+        const ringtoneSound = document.getElementById('ringtoneSound');
+        const buttonClickSound = document.getElementById('buttonClickSound');
+        const callStartSound = document.getElementById('callStartSound');
+        const callEndSound = document.getElementById('callEndSound');
+        
         // Переменные приложения
         let peer = null;
         let conn = null;
@@ -598,6 +697,190 @@
         let currentCameraIndex = 0;
         let hasVideoDevice = false;
         let hasAudioDevice = false;
+        let incomingCall = null;
+        let ringtoneInterval = null;
+
+        // Создаем звуки программно (fallback если base64 не работают)
+        function createSounds() {
+            // Звонок телефона (синусоидальный тон)
+            createRingtone();
+            
+            // Клик кнопки (короткий щелчок)
+            createButtonClick();
+            
+            // Начало звонка (короткий восходящий тон)
+            createCallStart();
+            
+            // Конец звонка (нисходящий тон)
+            createCallEnd();
+        }
+        
+        function createRingtone() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, context.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.5);
+            
+            oscillator.start(context.currentTime);
+            oscillator.stop(context.currentTime + 0.5);
+        }
+        
+        function createButtonClick() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
+            
+            oscillator.frequency.value = 600;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.2, context.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.1);
+            
+            oscillator.start(context.currentTime);
+            oscillator.stop(context.currentTime + 0.1);
+        }
+        
+        function createCallStart() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
+            
+            oscillator.frequency.setValueAtTime(400, context.currentTime);
+            oscillator.frequency.linearRampToValueAtTime(800, context.currentTime + 0.3);
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.2, context.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
+            
+            oscillator.start(context.currentTime);
+            oscillator.stop(context.currentTime + 0.3);
+        }
+        
+        function createCallEnd() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(context.destination);
+            
+            oscillator.frequency.setValueAtTime(800, context.currentTime);
+            oscillator.frequency.linearRampToValueAtTime(400, context.currentTime + 0.3);
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.2, context.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
+            
+            oscillator.start(context.currentTime);
+            oscillator.stop(context.currentTime + 0.3);
+        }
+        
+        // Функции воспроизведения звуков
+        function playRingtone() {
+            try {
+                // Пытаемся использовать HTML5 audio
+                ringtoneSound.currentTime = 0;
+                ringtoneSound.play().catch(e => {
+                    console.log('HTML5 ringtone failed, using fallback');
+                    createRingtone();
+                });
+            } catch (e) {
+                console.log('Using fallback ringtone');
+                createRingtone();
+            }
+        }
+        
+        function stopRingtone() {
+            try {
+                ringtoneSound.pause();
+                ringtoneSound.currentTime = 0;
+            } catch (e) {
+                // Ignore errors when stopping
+            }
+        }
+        
+        function playButtonClick() {
+            try {
+                buttonClickSound.currentTime = 0;
+                buttonClickSound.play().catch(e => {
+                    createButtonClick();
+                });
+            } catch (e) {
+                createButtonClick();
+            }
+        }
+        
+        function playCallStart() {
+            try {
+                callStartSound.currentTime = 0;
+                callStartSound.play().catch(e => {
+                    createCallStart();
+                });
+            } catch (e) {
+                createCallStart();
+            }
+        }
+        
+        function playCallEnd() {
+            try {
+                callEndSound.currentTime = 0;
+                callEndSound.play().catch(e => {
+                    createCallEnd();
+                });
+            } catch (e) {
+                createCallEnd();
+            }
+        }
+        
+        // Воспроизведение рингтона с интервалом
+        function startRingtone() {
+            playRingtone();
+            ringtoneInterval = setInterval(() => {
+                playRingtone();
+            }, 2000); // Повторять каждые 2 секунды
+        }
+        
+        function stopRingtone() {
+            if (ringtoneInterval) {
+                clearInterval(ringtoneInterval);
+                ringtoneInterval = null;
+            }
+            try {
+                ringtoneSound.pause();
+                ringtoneSound.currentTime = 0;
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+
+        // Инициализация звуков при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            createSounds();
+            
+            // Добавляем обработчики кликов на все кнопки
+            const allButtons = document.querySelectorAll('button');
+            allButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    if (!this.disabled) {
+                        playButtonClick();
+                    }
+                });
+            });
+        });
 
         // Показываем кнопку переключения камеры только на мобильных устройствах
         if (isMobileDevice) {
@@ -644,6 +927,43 @@
             } else {
                 alert('Пожалуйста, введите код комнаты');
             }
+        });
+        
+        // Принять входящий звонок
+        acceptCallBtn.addEventListener('click', () => {
+            if (incomingCall) {
+                stopRingtone();
+                incomingCallOverlay.style.display = 'none';
+                
+                if (localStream) {
+                    incomingCall.answer(localStream);
+                    setupCall(incomingCall);
+                    playCallStart();
+                } else {
+                    getUserMedia().then(stream => {
+                        incomingCall.answer(stream);
+                        setupCall(incomingCall);
+                        playCallStart();
+                    }).catch(err => {
+                        console.error('Не удалось получить доступ к медиаустройствам:', err);
+                        callStatus.textContent = 'Ошибка доступа к камере/микрофону';
+                        callStatus.classList.add('error');
+                    });
+                }
+                incomingCall = null;
+            }
+        });
+        
+        // Отклонить входящий звонок
+        declineCallBtn.addEventListener('click', () => {
+            stopRingtone();
+            incomingCallOverlay.style.display = 'none';
+            if (incomingCall) {
+                incomingCall.close();
+                incomingCall = null;
+            }
+            playCallEnd();
+            addMessage('Система: Входящий звонок отклонен', 'system');
         });
         
         // Инициализация Peer соединения
@@ -709,22 +1029,14 @@
                 // Обработка входящих видеозвонков
                 peer.on('call', (call) => {
                     console.log('Входящий звонок от:', call.peer);
+                    incomingCall = call;
                     
-                    if (localStream) {
-                        call.answer(localStream);
-                        setupCall(call);
-                        callStatus.textContent = 'Входящий звонок...';
-                        addMessage('Система: Входящий звонок', 'system');
-                    } else {
-                        getUserMedia().then(stream => {
-                            call.answer(stream);
-                            setupCall(call);
-                        }).catch(err => {
-                            console.error('Не удалось получить доступ к медиаустройствам:', err);
-                            callStatus.textContent = 'Ошибка доступа к камере/микрофону';
-                            callStatus.classList.add('error');
-                        });
-                    }
+                    // Показываем оверлей входящего звонка
+                    incomingCallOverlay.style.display = 'flex';
+                    startRingtone();
+                    
+                    callStatus.textContent = 'Входящий звонок...';
+                    addMessage('Система: Входящий звонок', 'system');
                 });
                 
             } catch (error) {
@@ -1119,6 +1431,7 @@
             try {
                 currentCall = peer.call(conn.peer, stream);
                 setupCall(currentCall);
+                playCallStart();
             } catch (error) {
                 console.error('Ошибка создания звонка:', error);
                 callStatus.textContent = 'Ошибка создания звонка';
@@ -1195,6 +1508,7 @@
                 conn.send({ type: 'call_ended', message: 'Звонок завершен' });
             }
             
+            playCallEnd();
             addMessage('Система: Звонок завершен', 'system');
         }
         
