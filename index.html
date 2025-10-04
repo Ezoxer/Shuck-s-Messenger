@@ -614,27 +614,6 @@
         </div>
     </div>
 
-    <!-- Аудио элементы для звуков -->
-    <audio id="ringtoneSound" preload="auto" loop>
-        <!-- Звонок телефона -->
-        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
-    </audio>
-    
-    <audio id="buttonClickSound" preload="auto">
-        <!-- Клик кнопки -->
-        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
-    </audio>
-    
-    <audio id="callStartSound" preload="auto">
-        <!-- Начало звонка -->
-        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
-    </audio>
-    
-    <audio id="callEndSound" preload="auto">
-        <!-- Конец звонка -->
-        <source src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==" type="audio/wav">
-    </audio>
-
     <!-- Подключаем PeerJS библиотеку -->
     <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
     
@@ -671,12 +650,6 @@
         const switchCameraBtn = document.getElementById('switchCameraBtn');
         const callStatus = document.getElementById('callStatus');
         
-        // Аудио элементы
-        const ringtoneSound = document.getElementById('ringtoneSound');
-        const buttonClickSound = document.getElementById('buttonClickSound');
-        const callStartSound = document.getElementById('callStartSound');
-        const callEndSound = document.getElementById('callEndSound');
-        
         // Переменные приложения
         let peer = null;
         let conn = null;
@@ -698,151 +671,96 @@
         let hasVideoDevice = false;
         let hasAudioDevice = false;
         let incomingCall = null;
+        let audioContext = null;
         let ringtoneInterval = null;
 
-        // Создаем звуки программно (fallback если base64 не работают)
-        function createSounds() {
-            // Звонок телефона (синусоидальный тон)
-            createRingtone();
-            
-            // Клик кнопки (короткий щелчок)
-            createButtonClick();
-            
-            // Начало звонка (короткий восходящий тон)
-            createCallStart();
-            
-            // Конец звонка (нисходящий тон)
-            createCallEnd();
+        // Создаем звуки с использованием Web Audio API
+        function createSound(frequency, duration, type = 'sine', volume = 0.2) {
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.value = frequency;
+                oscillator.type = type;
+                
+                gainNode.gain.setValueAtTime(volume, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + duration);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + duration);
+                
+            } catch (error) {
+                console.log('Audio creation failed:', error);
+            }
         }
-        
-        function createRingtone() {
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = context.createOscillator();
-            const gainNode = context.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(context.destination);
-            
-            oscillator.frequency.value = 800;
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.3, context.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.5);
-            
-            oscillator.start(context.currentTime);
-            oscillator.stop(context.currentTime + 0.5);
-        }
-        
-        function createButtonClick() {
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = context.createOscillator();
-            const gainNode = context.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(context.destination);
-            
-            oscillator.frequency.value = 600;
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.2, context.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.1);
-            
-            oscillator.start(context.currentTime);
-            oscillator.stop(context.currentTime + 0.1);
-        }
-        
-        function createCallStart() {
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = context.createOscillator();
-            const gainNode = context.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(context.destination);
-            
-            oscillator.frequency.setValueAtTime(400, context.currentTime);
-            oscillator.frequency.linearRampToValueAtTime(800, context.currentTime + 0.3);
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.2, context.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
-            
-            oscillator.start(context.currentTime);
-            oscillator.stop(context.currentTime + 0.3);
-        }
-        
-        function createCallEnd() {
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const oscillator = context.createOscillator();
-            const gainNode = context.createGain();
-            
-            oscillator.connect(gainNode);
-            gainNode.connect(context.destination);
-            
-            oscillator.frequency.setValueAtTime(800, context.currentTime);
-            oscillator.frequency.linearRampToValueAtTime(400, context.currentTime + 0.3);
-            oscillator.type = 'sine';
-            
-            gainNode.gain.setValueAtTime(0.2, context.currentTime);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.3);
-            
-            oscillator.start(context.currentTime);
-            oscillator.stop(context.currentTime + 0.3);
-        }
-        
+
         // Функции воспроизведения звуков
         function playRingtone() {
-            try {
-                // Пытаемся использовать HTML5 audio
-                ringtoneSound.currentTime = 0;
-                ringtoneSound.play().catch(e => {
-                    console.log('HTML5 ringtone failed, using fallback');
-                    createRingtone();
-                });
-            } catch (e) {
-                console.log('Using fallback ringtone');
-                createRingtone();
-            }
-        }
-        
-        function stopRingtone() {
-            try {
-                ringtoneSound.pause();
-                ringtoneSound.currentTime = 0;
-            } catch (e) {
-                // Ignore errors when stopping
-            }
+            createSound(800, 0.5, 'sine', 0.3);
         }
         
         function playButtonClick() {
-            try {
-                buttonClickSound.currentTime = 0;
-                buttonClickSound.play().catch(e => {
-                    createButtonClick();
-                });
-            } catch (e) {
-                createButtonClick();
-            }
+            createSound(600, 0.1, 'sine', 0.2);
         }
         
         function playCallStart() {
+            // Восходящий тон
             try {
-                callStartSound.currentTime = 0;
-                callStartSound.play().catch(e => {
-                    createCallStart();
-                });
-            } catch (e) {
-                createCallStart();
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(400, audioContext.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(800, audioContext.currentTime + 0.3);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.log('Call start sound failed');
             }
         }
         
         function playCallEnd() {
+            // Нисходящий тон
             try {
-                callEndSound.currentTime = 0;
-                callEndSound.play().catch(e => {
-                    createCallEnd();
-                });
-            } catch (e) {
-                createCallEnd();
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+                oscillator.frequency.linearRampToValueAtTime(400, audioContext.currentTime + 0.3);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.3);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.3);
+            } catch (error) {
+                console.log('Call end sound failed');
             }
         }
         
@@ -851,7 +769,7 @@
             playRingtone();
             ringtoneInterval = setInterval(() => {
                 playRingtone();
-            }, 2000); // Повторять каждые 2 секунды
+            }, 2000);
         }
         
         function stopRingtone() {
@@ -859,28 +777,26 @@
                 clearInterval(ringtoneInterval);
                 ringtoneInterval = null;
             }
-            try {
-                ringtoneSound.pause();
-                ringtoneSound.currentTime = 0;
-            } catch (e) {
-                // Ignore errors
+        }
+
+        // Инициализация звуков при первом взаимодействии пользователя
+        function initializeAudio() {
+            // Создаем контекст при первом клике пользователя
+            if (!audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    // Воспроизводим тихий звук для разблокировки аудио
+                    createSound(100, 0.1, 'sine', 0.01);
+                } catch (error) {
+                    console.log('Audio context initialization failed');
+                }
             }
         }
 
-        // Инициализация звуков при загрузке
-        document.addEventListener('DOMContentLoaded', function() {
-            createSounds();
-            
-            // Добавляем обработчики кликов на все кнопки
-            const allButtons = document.querySelectorAll('button');
-            allButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    if (!this.disabled) {
-                        playButtonClick();
-                    }
-                });
-            });
-        });
+        // Добавляем обработчики кликов на все кнопки для инициализации аудио
+        document.addEventListener('click', function() {
+            initializeAudio();
+        }, { once: true });
 
         // Показываем кнопку переключения камеры только на мобильных устройствах
         if (isMobileDevice) {
@@ -889,6 +805,7 @@
         
         // Создание комнаты
         createRoomBtn.addEventListener('click', () => {
+            playButtonClick();
             createRoomSection.classList.remove('hidden');
             joinRoomSection.classList.add('hidden');
             isHost = true;
@@ -896,6 +813,7 @@
         
         // Присоединение к комнате
         joinRoomBtn.addEventListener('click', () => {
+            playButtonClick();
             createRoomSection.classList.add('hidden');
             joinRoomSection.classList.remove('hidden');
             isHost = false;
@@ -903,6 +821,7 @@
         
         // Начать общение (хост)
         startChatBtn.addEventListener('click', () => {
+            playButtonClick();
             currentRoomCode = createRoomCodeInput.value.trim();
             if (currentRoomCode) {
                 initializePeer(currentRoomCode);
@@ -917,6 +836,7 @@
         
         // Подключиться к комнате (клиент)
         connectToRoomBtn.addEventListener('click', () => {
+            playButtonClick();
             currentRoomCode = joinRoomCodeInput.value.trim();
             if (currentRoomCode) {
                 initializePeer();
@@ -931,6 +851,7 @@
         
         // Принять входящий звонок
         acceptCallBtn.addEventListener('click', () => {
+            playButtonClick();
             if (incomingCall) {
                 stopRingtone();
                 incomingCallOverlay.style.display = 'none';
@@ -956,6 +877,7 @@
         
         // Отклонить входящий звонок
         declineCallBtn.addEventListener('click', () => {
+            playButtonClick();
             stopRingtone();
             incomingCallOverlay.style.display = 'none';
             if (incomingCall) {
@@ -1137,16 +1059,20 @@
                     const constraints = {};
                     
                     if (hasVideoDevice) {
-                        // Упрощенные constraints для лучшей совместимости с iOS
-                        constraints.video = {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            frameRate: { ideal: 30 }
-                        };
-                        
-                        // Добавляем facingMode только если не iOS (для iOS используем deviceId)
-                        if (!isIOS) {
-                            constraints.video.facingMode = facingMode;
+                        // Для iOS используем упрощенные constraints
+                        if (isIOS) {
+                            constraints.video = {
+                                width: { ideal: 640 },
+                                height: { ideal: 480 },
+                                frameRate: { ideal: 30 }
+                            };
+                        } else {
+                            constraints.video = {
+                                width: { ideal: 640 },
+                                height: { ideal: 480 },
+                                frameRate: { ideal: 30 },
+                                facingMode: facingMode
+                            };
                         }
                     } else {
                         constraints.video = false;
@@ -1233,23 +1159,13 @@
             return navigator.mediaDevices.enumerateDevices()
                 .then(devices => {
                     availableCameras = devices.filter(device => device.kind === 'videoinput');
-                    console.log('Доступные камеры:', availableCameras.length);
-                    
-                    // Для iOS: определяем фронтальные и задние камеры
-                    if (isIOS && availableCameras.length > 0) {
-                        // На iOS обычно 2 камеры - фронтальная и задняя
-                        // Сортируем их для удобства переключения
-                        availableCameras.sort((a, b) => {
-                            // Предполагаем что первая камера - фронтальная
-                            return a.deviceId.localeCompare(b.deviceId);
-                        });
-                    }
+                    console.log('Доступные камеры:', availableCameras);
                     
                     return availableCameras;
                 });
         }
         
-        // Переключение между камерами
+        // Переключение между камерами для iOS
         function switchCamera() {
             if (!isMobileDevice || availableCameras.length < 2) return;
             
@@ -1269,68 +1185,36 @@
                     height: { ideal: 480 },
                     frameRate: { ideal: 30 }
                 },
-                audio: {
+                audio: wasAudioDevice ? {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true
-                }
+                } : false
             };
             
-            // Останавливаем только видеотреки, сохраняя аудио
+            // Останавливаем текущий поток
             if (localStream) {
-                const videoTracks = localStream.getVideoTracks();
-                videoTracks.forEach(track => track.stop());
+                localStream.getTracks().forEach(track => track.stop());
             }
             
             navigator.mediaDevices.getUserMedia(constraints)
                 .then(stream => {
-                    // Сохраняем аудиотреки из старого потока
-                    const oldAudioTracks = localStream ? localStream.getAudioTracks() : [];
-                    
-                    // Создаем новый поток с новым видео и старым аудио
-                    const newStream = new MediaStream();
-                    
-                    // Добавляем новые видеотреки
-                    const newVideoTracks = stream.getVideoTracks();
-                    newVideoTracks.forEach(track => {
-                        newStream.addTrack(track);
-                        // Восстанавливаем состояние видео
-                        track.enabled = wasVideoEnabled;
-                    });
-                    
-                    // Добавляем старые аудиотреки (если они есть)
-                    if (oldAudioTracks.length > 0) {
-                        oldAudioTracks.forEach(track => {
-                            newStream.addTrack(track);
-                            // Восстанавливаем состояние аудио
-                            track.enabled = wasAudioEnabled;
-                        });
-                    } else {
-                        // Если старых аудиотреков нет, добавляем новые
-                        const newAudioTracks = stream.getAudioTracks();
-                        newAudioTracks.forEach(track => {
-                            newStream.addTrack(track);
-                            track.enabled = wasAudioEnabled;
-                        });
-                    }
-                    
-                    localStream = newStream;
+                    localStream = stream;
                     localVideo.srcObject = localStream;
                     
-                    // Определяем тип камеры для зеркального отображения
-                    const track = newStream.getVideoTracks()[0];
-                    if (track) {
-                        // Для iOS используем эвристику: первая камера - фронтальная
-                        if (isIOS) {
-                            if (currentCameraIndex === 0) {
-                                localVideo.classList.add('mirror-mode');
-                                currentFacingMode = 'user';
-                            } else {
-                                localVideo.classList.remove('mirror-mode');
-                                currentFacingMode = 'environment';
-                            }
+                    // Для iOS определяем камеру по индексу
+                    if (isIOS) {
+                        if (currentCameraIndex === 0) {
+                            localVideo.classList.add('mirror-mode');
+                            currentFacingMode = 'user';
                         } else {
-                            // Для Android определяем через facingMode
+                            localVideo.classList.remove('mirror-mode');
+                            currentFacingMode = 'environment';
+                        }
+                    } else {
+                        // Для Android определяем через facingMode
+                        const track = stream.getVideoTracks()[0];
+                        if (track) {
                             const settings = track.getSettings();
                             if (settings.facingMode === 'user') {
                                 localVideo.classList.add('mirror-mode');
@@ -1342,9 +1226,20 @@
                         }
                     }
                     
+                    // Восстанавливаем состояния
+                    const videoTrack = localStream.getVideoTracks()[0];
+                    if (videoTrack) {
+                        videoTrack.enabled = wasVideoEnabled;
+                    }
+                    
+                    const audioTrack = localStream.getAudioTracks()[0];
+                    if (audioTrack) {
+                        audioTrack.enabled = wasAudioEnabled;
+                    }
+                    
                     // Если активен звонок, заменяем видеотрак
                     if (isCallActive && currentCall) {
-                        const videoTrack = newStream.getVideoTracks()[0];
+                        const videoTrack = localStream.getVideoTracks()[0];
                         if (videoTrack) {
                             const sender = currentCall.peerConnection.getSenders().find(s => 
                                 s.track && s.track.kind === 'video'
@@ -1402,6 +1297,7 @@
         startCallBtn.addEventListener('click', startCall);
         
         function startCall() {
+            playButtonClick();
             if (!isConnected || !conn) {
                 callStatus.textContent = 'Ошибка: Нет подключения к собеседнику';
                 callStatus.classList.add('error');
@@ -1479,6 +1375,7 @@
         endCallBtn.addEventListener('click', endCall);
         
         function endCall() {
+            playButtonClick();
             if (!isCallActive) return;
             
             console.log('Завершение звонка...');
@@ -1516,6 +1413,7 @@
         toggleVideoBtn.addEventListener('click', toggleVideo);
         
         function toggleVideo() {
+            playButtonClick();
             if (!localStream) return;
             
             const videoTracks = localStream.getVideoTracks();
@@ -1530,6 +1428,7 @@
         toggleAudioBtn.addEventListener('click', toggleAudio);
         
         function toggleAudio() {
+            playButtonClick();
             if (!localStream) return;
             
             const audioTracks = localStream.getAudioTracks();
@@ -1539,6 +1438,12 @@
                 updateMediaButtons();
             }
         }
+        
+        // Переключение камеры
+        switchCameraBtn.addEventListener('click', function() {
+            playButtonClick();
+            switchCamera();
+        });
         
         // Обновление состояния кнопок медиа
         function updateMediaButtons() {
@@ -1565,9 +1470,6 @@
                 switchCameraBtn.classList.add('hidden');
             }
         }
-        
-        // Обработчики для дополнительных кнопок
-        switchCameraBtn.addEventListener('click', switchCamera);
         
         // Получаем список камер при загрузке
         if (isMobileDevice) {
